@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kb-agent · 跟着一个项目学完 AI 应用开发</title>
+<meta name="description" content="用 DeepSeek 把一个个人知识库助手从空目录做到公网可访问：43 个可执行步骤，每一步写清动哪个文件、跑什么命令、看文档哪一节、怎么算做完；已跑通的步骤附本机实测记录与踩过的坑。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f57d6'/%3E%3Cpath d='M9 22V10h3l4 7 4-7h3v12h-2.6v-8L16.8 21h-1.6L11.6 14v8Z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+
+<a class="skip" href="#main">跳到正文</a>
+
+<header class="bar">
+  <div class="bar__in">
+    <a class="brand" href="#/roadmap">
+      <span class="brand__mark">kb</span>
+      <span class="brand__text">kb-agent</span>
+    </a>
+
+    <nav class="tabs" id="tabs" aria-label="模块">
+      <a class="tab" href="#/roadmap" data-view="roadmap">路线<em id="tabCount">0/43</em></a>
+      <a class="tab" href="#/log" data-view="log">实操档案<em id="tabLog">–</em></a>
+      <a class="tab" href="#/concepts" data-view="concepts">概念地图<em id="tabKb">47</em></a>
+      <a class="tab" href="#/rules" data-view="rules">规则</a>
+    </nav>
+
+    <div class="bar__right">
+      <span class="pct" id="topPct">0%</span>
+      <button class="btn btn--primary" id="continueBtn" type="button">继续学习</button>
+    </div>
+  </div>
+  <span class="bar__line" aria-hidden="true"><i id="topFill"></i></span>
+</header>
+
+<main class="shell" id="main">
+
+  <!-- ============ 路线 ============ -->
+  <section class="panel" id="panel-roadmap" role="region" aria-label="路线">
+    <div class="intro">
+      <div class="intro__text">
+        <p class="eyebrow">2026 · 前端 / 全栈 → AI 应用</p>
+        <h1>跟着一个项目<br>从空目录做到<em>公网可访问</em></h1>
+        <p class="lede">只做一件事：把「个人知识库助手」做到能上线。每步写清动哪个文件、跑什么命令、看文档哪一节、怎么算做完。</p>
+        <p class="facts">
+          <span><b id="factSteps">43</b>步</span>
+          <span><b id="factHours">160</b>小时</span>
+          <span><b id="factConcepts">47</b>概念</span>
+          <span><b>5</b>个版本</span>
+        </p>
+      </div>
+      <a class="proof" href="#/log">
+        <span class="proof__k">已验证，不是纸上路线</span>
+        <span class="proof__nums">
+          <span><b id="statSteps">–</b>步跑通</span>
+          <span><b id="statCommits">–</b>次提交</span>
+          <span><b id="statEndpoints">–</b>个接口</span>
+          <span><b id="statTests">–</b>个测试</span>
+        </span>
+        <span class="proof__go">看实操档案 →</span>
+      </a>
+    </div>
+
+    <div class="road">
+      <aside class="rail">
+        <div class="rail__progress">
+          <p class="k-label">总进度</p>
+          <p class="rail__count"><b id="sideDone">0</b><span>/ <span id="sideTotal">43</span> 步</span></p>
+          <div class="pbar"><i id="sideFill"></i></div>
+        </div>
+
+        <ol class="rail__list" id="rail" role="tablist" aria-label="阶段"></ol>
+
+        <div class="rail__foot">
+          <label for="pace">每周投入</label>
+          <select id="pace">
+            <option value="8">8 小时</option>
+            <option value="12" selected>12 小时</option>
+            <option value="16">16 小时</option>
+          </select>
+          <label for="startDate">开始日期</label>
+          <input type="date" id="startDate">
+          <p class="rail__eta">共约 <b id="etaWeeks">—</b> 周，预计 <b id="etaDate">—</b></p>
+          <div class="rail__actions">
+            <button type="button" class="linkbtn" id="exportBtn">导出进度</button>
+            <button type="button" class="linkbtn" id="importBtn">导入</button>
+            <button type="button" class="linkbtn linkbtn--danger" id="resetBtn">重置</button>
+          </div>
+          <input type="file" id="importFile" accept="application/json" hidden>
+        </div>
+      </aside>
+
+      <div class="steps-pane">
+        <div class="phase-head" id="phaseHead"></div>
+
+        <div class="search">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+          <input id="search" type="search" placeholder="搜步骤：CORS、pytest、SSE、uv…" aria-label="搜索步骤">
+          <button type="button" class="search__clear" id="searchClear" hidden>清空</button>
+        </div>
+
+        <p class="search__meta" id="searchMeta" hidden></p>
+        <ul class="steps" id="steps"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 实操档案 ============ -->
+  <section class="panel" id="panel-log" role="region" aria-label="实操档案" hidden>
+    <header class="panel__head">
+      <p class="eyebrow">实操档案</p>
+      <h2 class="panel__h">这条路，已经有人走过一遍</h2>
+      <p class="panel__lede" id="logMeta"></p>
+    </header>
+    <div class="log__stats" id="logStats"></div>
+    <div class="log__eps" id="logEps"></div>
+    <ol class="log__list" id="logList"></ol>
+    <div class="log__commits">
+      <p class="k-label">提交记录</p>
+      <ul id="logCommits"></ul>
+    </div>
+  </section>
+
+  <!-- ============ 概念地图 ============ -->
+  <section class="panel" id="panel-concepts" role="region" aria-label="概念地图" hidden>
+    <header class="panel__head">
+      <p class="eyebrow">先把词认全 · 不必先学懂</p>
+      <h2 class="panel__h">概念地图 · <span id="kbCount">47</span> 个词，五层</h2>
+      <p class="panel__lede" id="kbIntro"></p>
+      <ul class="kb__how" id="kbHow"></ul>
+    </header>
+    <div class="search search--kb">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+      <input id="kbSearch" type="search" placeholder="搜概念：RAG、SSE、token、session…" aria-label="搜索概念">
+    </div>
+    <div class="kb__layers" id="kbLayers"></div>
+  </section>
+
+  <!-- ============ 规则 ============ -->
+  <section class="panel" id="panel-rules" role="region" aria-label="规则" hidden>
+    <header class="panel__head">
+      <p class="eyebrow">怎么用这份路线</p>
+      <h2 class="panel__h">执行规则</h2>
+      <p class="panel__lede">四个模块各管一件事：路线告诉你下一步做什么，实操档案证明它真被做过，概念地图负责把词认全，这里讲怎么用。</p>
+    </header>
+    <div class="prep">
+      <div class="prep__item">
+        <p class="k-label">开工前装</p>
+        <p>Node 18+（第 0 步只要这个）· uv 装的 Python 3.12（p1-1 起）· Docker（p5-4 起）· 一个 DeepSeek API Key（充 10 元够用）</p>
+      </div>
+      <div class="prep__item">
+        <p class="k-label">进度存在哪</p>
+        <p>本机浏览器（localStorage），不上传、换设备不同步。要换设备就用「导出进度 / 导入」把 JSON 拷过去。</p>
+      </div>
+    </div>
+    <div class="rules__grid" id="rulesGrid"></div>
+    <footer class="foot">
+      <p>路线基于 2026 年 10 月的岗位市场整理。框架版本变化快，工具选型建议每季度复核；步骤顺序与项目制推进的方法不需要动。</p>
+      <p class="foot__meta">实操档案由 <code>node scripts/sync-progress.mjs</code> 从仓库生成，不手写</p>
+    </footer>
+  </section>
+
+</main>
+
+<script src="data/curriculum.js"></script>
+<script src="data/knowledge.js"></script>
+<script src="data/progress.js"></script>
+<script src="scripts/app.js"></script>
+</body>
+</html>
