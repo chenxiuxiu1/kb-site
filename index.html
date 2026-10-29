@@ -24,6 +24,7 @@
       <a class="tab" href="#/pano" data-view="pano">全景</a>
       <a class="tab" href="#/log" data-view="log">实操档案<em id="tabLog">–</em></a>
       <a class="tab" href="#/concepts" data-view="concepts">概念地图<em id="tabKb">47</em></a>
+      <a class="tab" href="#/library" data-view="library">知识库<em id="tabLib">–</em></a>
       <a class="tab" href="#/rules" data-view="rules">规则</a>
       <a class="tab" href="#/career" data-view="career">求职</a>
     </nav>
@@ -209,6 +210,37 @@
     <div class="kb__layers" id="kbLayers"></div>
   </section>
 
+  <!-- ============ 知识库 ============ -->
+  <section class="panel" id="panel-library" role="region" aria-label="知识库" hidden>
+    <header class="panel__head">
+      <p class="eyebrow">p3 检索 + p4 工具 · 能搜能读</p>
+      <h2 class="panel__h">输入一句话，直接落到那一段</h2>
+      <p class="panel__lede" id="libIntro"></p>
+      <ul class="kb__how" id="libHow"></ul>
+    </header>
+
+    <div class="search search--lib">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+      <input id="libSearch" type="search" placeholder="搜内容：反向代理、BM25、p95、pytest…" aria-label="搜索知识库">
+      <button type="button" class="search__clear" id="libClear" hidden>清空</button>
+    </div>
+    <p class="search__meta" id="libMeta" hidden></p>
+
+    <div class="lib__hits" id="libHits"></div>
+
+    <div class="lib__group">
+      <p class="k-label" id="libDocsLabel">全部资料</p>
+      <div class="kb__layers" id="libDocs"></div>
+    </div>
+
+    <div class="lib__group">
+      <p class="k-label" id="libNotesLabel">笔记</p>
+      <div class="kb__layers" id="libNotes"></div>
+    </div>
+
+    <p class="pano__foot" id="libFoot"></p>
+  </section>
+
   <!-- ============ 规则 ============ -->
   <section class="panel" id="panel-rules" role="region" aria-label="规则" hidden>
     <header class="panel__head">
@@ -265,6 +297,7 @@
 <script src="data/knowledge.js"></script>
 <script src="data/links.js"></script>
 <script src="data/career.js"></script>
+<script src="data/library.js"></script>
 <script src="data/progress.js"></script>
 <script src="scripts/app.js"></script>
 </body>

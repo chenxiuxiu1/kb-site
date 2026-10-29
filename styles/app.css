@@ -1277,6 +1277,107 @@ code {
   font-weight: 600;
 }
 
+/* ---------------------------------------------------------------- 知识库（静态快照） */
+
+.search--lib { max-width: 520px; margin: 0 0 18px; }
+
+.lib__hits {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.lib__hit-btn {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.lib__hit-btn:hover { border-color: var(--accent-line); background: #fcfdff; }
+
+.lib__rank {
+  flex: 0 0 20px;
+  padding-top: 1px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.lib__hit-main { flex: 1 1 auto; min-width: 0; }
+
+.lib__from {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+
+.lib__score {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-4);
+}
+
+.lib__snippet {
+  display: block;
+  margin-top: 3px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink-3);
+}
+
+/* 高亮只在摘要里出现：正文全量标黄反而更难读 */
+.lib__snippet mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: #fff2b8;
+  color: var(--ink);
+}
+
+.lib__group { margin-top: 26px; }
+.lib__group .k-label { margin-bottom: 8px; }
+
+.lib__chunk {
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.lib__chunk:first-child { padding-top: 4px; border-top: 0; }
+.lib__chunk.is-flash { border-radius: 8px; animation: flash 1.6s ease-out; }
+
+.lib__seq {
+  display: inline-block;
+  margin-bottom: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+.lib__chunk p,
+.lib__p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink-2);
+  /* 原文里的换行与缩进得留住，否则代码片段会挤成一团 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lib__p + .lib__p { margin-top: 8px; }
+
 /* ---------------------------------------------------------------- 规则 */
 
 .prep {

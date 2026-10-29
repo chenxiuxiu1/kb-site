@@ -6,10 +6,11 @@
   var KB = window.KNOWLEDGE;
   var LINKS = window.LINKS || [];
   var CAREER = window.CAREER || null;
+  var LIB = window.LIBRARY || null;
   var LOG = window.PROGRESS || null;
   var KEY = "kb-agent-progress-v2";
   var COEF = 1.6;        // 步骤估时只算敲代码；读文档、踩坑、返工按这个系数补
-  var VIEWS = ["roadmap", "pano", "log", "concepts", "rules", "career"];
+  var VIEWS = ["roadmap", "pano", "log", "concepts", "library", "rules", "career"];
 
   var totalSteps = DATA.phases.reduce(function (n, p) { return n + p.steps.length; }, 0);
 
@@ -597,6 +598,345 @@
     }, 90);
   }
 
+  /* ---------------- 知识库：静态快照 + 浏览器内 BM25 ---------------- */
+
+  /* 数据在构建时导成 data/library.js，检索在浏览器里算 —— 站点是纯静态的，
+     没有 Python 也没有 key。下面这套分词与打分是从 kb-agent/app/rag.py 照搬的：
+     两处同规则，才不会出现「线上搜得到、这里搜不到」。改一边就得改另一边。 */
+
+  var LIB_TOKEN_RE = /[a-zA-Z0-9_]+|[\u4e00-\u9fff]+/g;
+
+  var lib = { built: false, segs: [], tfs: [], lens: [], idf: {}, avgdl: 0 };
+
+  function libTokens(text) {
+    var out = [];
+    var m;
+    LIB_TOKEN_RE.lastIndex = 0;
+    while ((m = LIB_TOKEN_RE.exec(text))) {
+      var piece = m[0];
+      if (piece.charCodeAt(0) < 128) out.push(piece.toLowerCase());
+      else if (piece.length === 1) out.push(piece);
+      else for (var i = 0; i < piece.length - 1; i++) out.push(piece.substr(i, 2));
+    }
+    return out;
+  }
+
+  function libBuild() {
+    if (lib.built) return;
+    lib.built = true;
+    if (!LIB) return;
+
+    LIB.documents.forEach(function (doc) {
+      (doc.chunks || []).forEach(function (text, i) {
+        lib.segs.push({ doc: doc, seq: i, text: text });
+      });
+    });
+
+    var df = {};
+    lib.segs.forEach(function (seg) {
+      var tf = {};
+      var toks = libTokens(seg.text);
+      toks.forEach(function (t) { tf[t] = (tf[t] || 0) + 1; });
+      lib.tfs.push(tf);
+      lib.lens.push(toks.length);
+      Object.keys(tf).forEach(function (t) { df[t] = (df[t] || 0) + 1; });
+    });
+
+    var n = lib.segs.length;
+    var total = 0;
+    lib.lens.forEach(function (l) { total += l; });
+    lib.avgdl = n ? total / n : 0;
+    Object.keys(df).forEach(function (t) {
+      lib.idf[t] = Math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5));
+    });
+  }
+
+  function libSearch(query, k) {
+    libBuild();
+    var terms = libTokens(query);
+    if (!terms.length || !lib.segs.length) return [];
+
+    var K1 = 1.5, B = 0.75;
+    var scored = [];
+    lib.segs.forEach(function (seg, i) {
+      var tf = lib.tfs[i];
+      var norm = K1 * (1 - B + B * lib.lens[i] / (lib.avgdl || 1));
+      var score = 0;
+      terms.forEach(function (t) {
+        var f = tf[t];
+        if (!f) return;
+        score += (lib.idf[t] || 0) * f * (K1 + 1) / (f + norm);
+      });
+      if (score > 0) scored.push({ i: i, score: score });
+    });
+
+    scored.sort(function (a, b) { return b.score - a.score; });
+    return scored.slice(0, k || 8);
+  }
+
+  function libEscRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+  /* 高亮得在「原文」上找、在「转义后」的片段上拼，否则用户输入 <b> 这类文本会被当成标签 */
+  function libHighlight(raw, terms) {
+    if (!terms.length) return esc(raw);
+    var re = new RegExp(terms.map(libEscRe).join("|"), "gi");
+    var out = [], last = 0, m, guard = 0;
+    while ((m = re.exec(raw)) && guard++ < 400) {
+      if (!m[0]) { re.lastIndex++; continue; }
+      if (m.index > last) out.push(esc(raw.slice(last, m.index)));
+      out.push("<mark>" + esc(m[0]) + "</mark>");
+      last = m.index + m[0].length;
+    }
+    out.push(esc(raw.slice(last)));
+    return out.join("");
+  }
+
+  /* 摘要取「第一个命中词」附近，而不是永远从开头截 —— 命中在后面时前者才说明问题 */
+  function libSnippet(text, terms) {
+    var low = text.toLowerCase();
+    var at = -1;
+    terms.forEach(function (t) {
+      var p = low.indexOf(t.toLowerCase());
+      if (p >= 0 && (at < 0 || p < at)) at = p;
+    });
+    if (at < 0) at = 0;
+    var start = Math.max(0, at - 45);
+    var end = Math.min(text.length, start + 170);
+    return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
+  }
+
+  function libHighlightTerms(query) {
+    var seen = {};
+    return libTokens(query).filter(function (t) {
+      if (t.length < 2 || seen[t]) return false;
+      seen[t] = 1;
+      return true;
+    }).slice(0, 12);
+  }
+
+  var LIB_CHEV = '<svg class="kb__chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>';
+
+  function libDocHTML(doc, idx) {
+    var h = [];
+    h.push('<div class="kb__layer" data-doc="' + doc.id + '">');
+    h.push('<button class="kb__head" type="button" aria-expanded="false">');
+    h.push('<span class="kb__no">' + pad(idx + 1) + "</span>");
+    h.push('<span class="kb__titles"><b>' + esc(doc.title) + "</b><i>" +
+      esc(doc.source || "资料") + (doc.at ? " · " + esc(doc.at) : "") + "</i></span>");
+    h.push('<span class="kb__n">' + (doc.chunks || []).length + " 段</span>");
+    h.push(LIB_CHEV);
+    h.push("</button>");
+    h.push('<div class="kb__body">');
+    (doc.chunks || []).forEach(function (text, i) {
+      h.push('<div class="lib__chunk" id="chunk-' + doc.id + "-" + i + '">');
+      h.push('<span class="lib__seq">第 ' + (i + 1) + " 段</span>");
+      h.push("<p>" + esc(text) + "</p>");
+      h.push("</div>");
+    });
+    h.push("</div></div>");
+    return h.join("");
+  }
+
+  function libNoteHTML(note) {
+    var h = [];
+    h.push('<div class="kb__layer">');
+    h.push('<button class="kb__head" type="button" aria-expanded="false">');
+    h.push('<span class="kb__no">#' + note.id + "</span>");
+    h.push('<span class="kb__titles"><b>' + esc(note.title) + "</b><i>" +
+      esc((note.tags || []).join(" / ") || "笔记") + "</i></span>");
+    h.push('<span class="kb__n">' + (note.content || "").length + " 字</span>");
+    h.push(LIB_CHEV);
+    h.push("</button>");
+    h.push('<div class="kb__body">');
+    (note.content || "").split(/\n+/).forEach(function (p) {
+      if (p.trim()) h.push("<p class=\"lib__p\">" + esc(p) + "</p>");
+    });
+    h.push("</div></div>");
+    return h.join("");
+  }
+
+  function libHitsHTML(hits, terms) {
+    if (!hits.length) {
+      return '<p class="empty">这一段内容里没有匹配的段：换个说法，或只留关键词（比如「反向代理」而不是「反向代理会导致什么问题」）。</p>';
+    }
+    return '<ol class="lib__hits">' + hits.map(function (hit, i) {
+      var seg = lib.segs[hit.i];
+      return '<li class="lib__hit">' +
+        '<button type="button" class="lib__hit-btn" data-doc="' + seg.doc.id + '" data-seq="' + seg.seq + '">' +
+        '<span class="lib__rank">' + (i + 1) + "</span>" +
+        '<span class="lib__hit-main">' +
+        '<span class="lib__from">《' + esc(seg.doc.title) + "》第 " + (seg.seq + 1) + " 段" +
+        '<span class="lib__score">score ' + hit.score.toFixed(2) + "</span></span>" +
+        '<span class="lib__snippet">' + libHighlight(libSnippet(seg.text, terms), terms) + "</span>" +
+        "</span></button></li>";
+    }).join("") + "</ol>";
+  }
+
+  function renderLibrary(filter) {
+    var q = (filter || "").trim();
+    var docsBox = document.getElementById("libDocs");
+    var notesBox = document.getElementById("libNotes");
+    var hitsBox = document.getElementById("libHits");
+    var meta = document.getElementById("libMeta");
+    var foot = document.getElementById("libFoot");
+
+    if (!LIB) {
+      if (docsBox) docsBox.innerHTML = '<p class="empty">没有找到 data/library.js：先在 kb-agent 里跑一次 scripts/export_static.py。</p>';
+      if (meta) meta.hidden = true;
+      return;
+    }
+
+    var S = LIB.stats || {};
+    setText("tabLib", S.documents || 0);
+
+    var intro = document.getElementById("libIntro");
+    if (intro) {
+      intro.innerHTML = inline("这一页是 kb-agent 知识库的**静态快照**：构建时把资料和笔记导成一个文件，检索直接在浏览器里算（中文二元组 + BM25），和线上 `/library/search` 同一套打分。没有后端、不用登录，打开就能搜。");
+    }
+
+    var how = document.getElementById("libHow");
+    if (how) {
+      how.innerHTML = [
+        "搜的是**段**不是篇：命中会写明出自哪篇的第几段",
+        "排序用 BM25：词频高、词越罕见、段落越短，分越高",
+        "快照不联网：线上库变了，要回项目重跑一次导出",
+        "会话与指标不在快照里 —— 那些是运行时数据，这里只有内容",
+      ].map(function (t) { return "<li>" + inline(t) + "</li>"; }).join("");
+    }
+
+    if (foot) {
+      // 拼好一整段再交给 inline()：先把 HTML 写进去再 inline，会被整体转义成文本
+      foot.innerHTML = inline(
+        "快照生成于 **" + (LIB.generatedAt || "—") + "**，取自 `" +
+        (LIB.dbPath || "data/app.db") + "`；重新导出：`python scripts/export_static.py --with-eval`。" +
+        "资料里有一部分是评测语料（标题旁标了「评测语料」），不是你手写的内容。"
+      );
+    }
+
+    var docs = LIB.documents || [];
+    var notes = LIB.notes || [];
+
+    if (!q) {
+      if (hitsBox) hitsBox.innerHTML = "";
+      if (meta) meta.hidden = true;
+      libBuild();
+      if (docsBox) {
+        docsBox.innerHTML = docs.length
+          ? docs.map(libDocHTML).join("")
+          : '<p class="empty">库里还没有资料。在 kb-agent 里上传一篇，再重跑导出。</p>';
+      }
+      if (notesBox) {
+        notesBox.innerHTML = notes.length ? notes.map(libNoteHTML).join("") : '<p class="empty">还没有笔记。</p>';
+      }
+      setText("libDocsLabel", "全部资料（" + docs.length + " 篇 / " + (S.chunks || 0) + " 段）");
+      setText("libNotesLabel", "笔记（" + notes.length + " 条）");
+      return;
+    }
+
+    libBuild();
+    var terms = libHighlightTerms(q);
+    var started = (window.performance && performance.now) ? performance.now() : Date.now();
+    var hits = libSearch(q, 8);
+    var ms = ((window.performance && performance.now) ? performance.now() : Date.now()) - started;
+
+    if (hitsBox) hitsBox.innerHTML = libHitsHTML(hits, terms);
+
+    if (meta) {
+      meta.hidden = false;
+      meta.textContent = "在 " + lib.segs.length + " 段里命中 " + hits.length + " 段，用时 " + ms.toFixed(1) + "ms";
+    }
+
+    // 命中的文档按最好名次排序展示；笔记按关键词硬匹配（笔记少，不值得单独建索引）
+    var order = [], seen = {};
+    hits.forEach(function (hit) {
+      var id = lib.segs[hit.i].doc.id;
+      if (!seen[id]) { seen[id] = 1; order.push(id); }
+    });
+    var hitDocs = order.map(function (id) {
+      return docs.filter(function (d) { return d.id === id; })[0];
+    }).filter(Boolean);
+
+    var kw = q.toLowerCase();
+    var hitNotes = notes.filter(function (n) {
+      return (n.title + " " + n.content + " " + (n.tags || []).join(" ")).toLowerCase().indexOf(kw) >= 0;
+    });
+
+    if (docsBox) {
+      docsBox.innerHTML = hitDocs.length
+        ? hitDocs.map(libDocHTML).join("")
+        : '<p class="empty">没有资料命中，看看上面的摘要是不是换个词就能搜到。</p>';
+    }
+    if (notesBox) {
+      notesBox.innerHTML = hitNotes.length
+        ? hitNotes.map(libNoteHTML).join("")
+        : '<p class="empty">没有笔记命中这个关键词。</p>';
+    }
+    setText("libDocsLabel", "命中资料（" + hitDocs.length + " 篇）");
+    setText("libNotesLabel", "笔记（命中 " + hitNotes.length + " 条）");
+
+    // 搜完把第一条命中的文档展开：不然用户还得再多点一下才看得到上下文
+    if (hitDocs.length) libOpenDoc(hitDocs[0].id);
+  }
+
+  function libOpenDoc(docId) {
+    var box = document.querySelector('#libDocs [data-doc="' + docId + '"]');
+    if (!box) return null;
+    box.classList.add("is-open");
+    var head = box.querySelector(".kb__head");
+    if (head) head.setAttribute("aria-expanded", "true");
+    return box;
+  }
+
+  function bindLibrary() {
+    ["libDocs", "libNotes"].forEach(function (id) {
+      var box = document.getElementById(id);
+      if (!box) return;
+      box.addEventListener("click", function (e) {
+        var head = e.target.closest(".kb__head");
+        if (!head) return;
+        var layer = head.closest(".kb__layer");
+        var open = !layer.classList.contains("is-open");
+        layer.classList.toggle("is-open", open);
+        head.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    });
+
+    // 点摘要跳到原文那一段：展开 + 滚过去 + 闪一下，省得人自己在长文里找
+    var hits = document.getElementById("libHits");
+    if (hits) {
+      hits.addEventListener("click", function (e) {
+        var btn = e.target.closest(".lib__hit-btn");
+        if (!btn) return;
+        var docId = +btn.getAttribute("data-doc");
+        var seq = +btn.getAttribute("data-seq");
+        libOpenDoc(docId);
+        var el = document.getElementById("chunk-" + docId + "-" + seq);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("is-flash");
+        setTimeout(function () { el.classList.remove("is-flash"); }, 1600);
+      });
+    }
+
+    var box = document.getElementById("libSearch");
+    var clear = document.getElementById("libClear");
+    if (box) {
+      box.addEventListener("input", function () {
+        renderLibrary(box.value);
+        if (clear) clear.hidden = !box.value;
+      });
+    }
+    if (clear) {
+      clear.addEventListener("click", function () {
+        if (!box) return;
+        box.value = "";
+        box.focus();
+        clear.hidden = true;
+        renderLibrary("");
+      });
+    }
+  }
+
   /* ---------------- 进度同步 ---------------- */
 
   function syncChecks() {
@@ -1121,6 +1461,8 @@
     bindKeys();
     renderEta();
     sync();
+    renderLibrary("");
+    bindLibrary();
     applyRoute(false);
 
     // 空进度 + 没指定具体步骤时，先把第 0 步展开，省掉「要点哪里」的犹豫
