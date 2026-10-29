@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>kb-agent · 跟着一个项目学完 AI 应用开发</title>
-<meta name="description" content="用 DeepSeek 把一个个人知识库助手从空目录做到公网可访问：43 个可执行步骤，每一步写清动哪个文件、跑什么命令、看文档哪一节、怎么算做完；已跑通的步骤附本机实测记录与踩过的坑。">
+<title>AI 应用开发 · 43 步做出一个能上线的项目</title>
+<meta name="description" content="AI 应用开发的项目制路线：用 DeepSeek 把一个知识库助手从空目录做到公网可访问，43 个可执行步骤，每步写清动哪个文件、跑什么命令、怎么算做完；已跑通的步骤附本机实测记录与踩过的坑，另有全景技术说明、47 个概念白话解释、16 条报错速查和面试准备。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f57d6'/%3E%3Cpath d='M9 22V10h3l4 7 4-7h3v12h-2.6v-8L16.8 21h-1.6L11.6 14v8Z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles/app.css">
 </head>
@@ -21,9 +21,11 @@
 
     <nav class="tabs" id="tabs" aria-label="模块">
       <a class="tab" href="#/roadmap" data-view="roadmap">路线<em id="tabCount">0/43</em></a>
+      <a class="tab" href="#/pano" data-view="pano">全景</a>
       <a class="tab" href="#/log" data-view="log">实操档案<em id="tabLog">–</em></a>
       <a class="tab" href="#/concepts" data-view="concepts">概念地图<em id="tabKb">47</em></a>
       <a class="tab" href="#/rules" data-view="rules">规则</a>
+      <a class="tab" href="#/career" data-view="career">求职</a>
     </nav>
 
     <div class="bar__right">
@@ -38,29 +40,21 @@
 
   <!-- ============ 路线 ============ -->
   <section class="panel" id="panel-roadmap" role="region" aria-label="路线">
-    <div class="intro">
-      <div class="intro__text">
-        <p class="eyebrow">2026 · 前端 / 全栈 → AI 应用</p>
-        <h1>跟着一个项目<br>从空目录做到<em>公网可访问</em></h1>
-        <p class="lede">只做一件事：把「个人知识库助手」做到能上线。每步写清动哪个文件、跑什么命令、看文档哪一节、怎么算做完。</p>
-        <p class="facts">
-          <span><b id="factSteps">43</b>步</span>
-          <span><b id="factHours">160</b>小时</span>
-          <span><b id="factConcepts">47</b>概念</span>
-          <span><b>5</b>个版本</span>
-        </p>
+    <header class="head">
+      <div class="head__main">
+        <p class="eyebrow">项目制学习路线</p>
+        <h1 class="head__title">AI 应用开发</h1>
+        <p class="head__meta"><b id="headSteps">43</b> 步 · <b>5</b> 个版本 · <b id="headConcepts">47</b> 个概念</p>
+        <p class="head__lede">不按知识点排，按「能演示的版本」排：先把后端跑起来，再让模型说话、读你的资料、自己动手，最后上线。每一步都写清做什么、怎么验收、卡住去哪。</p>
+        <p class="head__note"><b id="headTested">8</b> 步已有实测记录（提交、测试、接口都可查），其余按同一套验收标准推演 —— 差异都在<a href="#/log">实操档案</a>里。</p>
+        <p class="head__next">下一步 <a id="headNext" href="#/roadmap/p1/p1-0"><b>01.01</b> 三天内让它说一句话</a></p>
       </div>
-      <a class="proof" href="#/log">
-        <span class="proof__k">已验证，不是纸上路线</span>
-        <span class="proof__nums">
-          <span><b id="statSteps">–</b>步跑通</span>
-          <span><b id="statCommits">–</b>次提交</span>
-          <span><b id="statEndpoints">–</b>个接口</span>
-          <span><b id="statTests">–</b>个测试</span>
-        </span>
-        <span class="proof__go">看实操档案 →</span>
-      </a>
-    </div>
+      <div class="head__refs">
+        <p class="k-label">最新资料<span class="head__refs-at">核对于 <span id="headRefsAt">2026-10-28</span></span><button type="button" class="head__refs-toggle" id="headRefsToggle" aria-expanded="false" aria-controls="headRefs">展开</button></p>
+        <ul id="headRefs"></ul>
+        <a class="head__refs-all" href="#/career" id="headRefsAll">全部资料</a>
+      </div>
+    </header>
 
     <div class="road">
       <aside class="rail">
@@ -106,6 +100,84 @@
     </div>
   </section>
 
+  <!-- ============ 全景 ============ -->
+  <section class="panel" id="panel-pano" role="region" aria-label="全景" hidden>
+    <header class="panel__head">
+      <p class="eyebrow">先看全貌 · 再动手</p>
+      <h2 class="panel__h">五个版本、一条链路、一套选型</h2>
+      <p class="panel__lede">路线围绕一个项目展开，但它是拆成五个可验收的版本递进做出来的。下面四块分别回答：做出来的东西长什么样、一次请求怎么走、每一层为什么这么选、每个阶段靠什么验收。</p>
+    </header>
+
+    <div class="pano__block">
+      <h3 class="pano__h3"><span>1</span>版本流水线：每个版本都能当场演示</h3>
+      <div class="flow" id="flowVersions"></div>
+    </div>
+
+    <div class="pano__block">
+      <h3 class="pano__h3"><span>2</span>一次「提问 → 回答」的链路（v4 时的样子）</h3>
+      <div class="flow flow--req">
+        <div class="flow__node">
+          <b>浏览器</b>
+          <i>React 页面 / 命令行</i>
+          <em>POST /chat，请求头带 Accept: text/event-stream</em>
+        </div>
+        <div class="flow__node">
+          <b>FastAPI</b>
+          <i>鉴权 · 限流 · 会话</i>
+          <em>路由只做参数校验，业务逻辑放 service 层</em>
+        </div>
+        <div class="flow__node">
+          <b>检索</b>
+          <i>问题转向量，找回相关片段</i>
+          <em>SQLite + 向量索引，返回 top-k 原文</em>
+        </div>
+        <div class="flow__node">
+          <b>DeepSeek</b>
+          <i>拼 prompt，流式生成</i>
+          <em>deepseek-flash，SSE 逐字返回</em>
+        </div>
+        <div class="flow__node">
+          <b>落库与回写</b>
+          <i>消息入库，边收边渲染</i>
+          <em>断线重连后还能看到历史</em>
+        </div>
+      </div>
+    </div>
+
+    <div class="pano__block">
+      <h3 class="pano__h3"><span>3</span>技术说明：每一层为什么这么选</h3>
+      <div class="stack-wrap">
+        <table class="stack">
+          <thead>
+            <tr><th>层</th><th>选型</th><th>为什么是它</th><th>引入</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>运行时</td><td><code>Node 24</code> + <code>uv</code>(Python 3.12)</td><td>第 0 步只要 Node，零安装先跑通；Python 交给 uv，不污染全局</td><td>p0 / p1</td></tr>
+            <tr><td>后端</td><td><code>FastAPI</code> + Uvicorn</td><td>类型即文档，<code>/docs</code> 自动生成，联调不用写文档</td><td>p1</td></tr>
+            <tr><td>校验与配置</td><td><code>Pydantic v2</code> + pydantic-settings</td><td>入参、出参、环境变量同一套模型，报错直接可读</td><td>p1</td></tr>
+            <tr><td>存储</td><td><code>SQLAlchemy 2</code> + SQLite → Postgres</td><td>先零运维，换库只改连接串，ORM 代码不动</td><td>p1</td></tr>
+            <tr><td>测试</td><td><code>pytest</code> + TestClient</td><td>接口级测试，不起服务器也能跑，改完立刻知道有没有砸</td><td>p1</td></tr>
+            <tr><td>前端</td><td><code>React 19</code> + Vite + TS</td><td>反馈最快；构建产物由 FastAPI 直接托管，同源免 CORS</td><td>p2</td></tr>
+            <tr><td>模型</td><td><code>DeepSeek</code>（OpenAI 兼容）</td><td>便宜、快、支持流式与工具调用，国内直连不用代理</td><td>p2</td></tr>
+            <tr><td>流式</td><td><code>SSE</code></td><td>单向够用，比 WebSocket 简单，代理与容器都友好</td><td>p2</td></tr>
+            <tr><td>检索</td><td>SQLite + 向量索引（先手写余弦）</td><td>先手写一遍「切块 → 嵌入 → 召回」，再换 pgvector 才看得懂差异</td><td>p3</td></tr>
+            <tr><td>Agent</td><td>先手写工具循环，再上框架</td><td>手写一遍才知道框架替你做了什么、什么时候会失控</td><td>p4</td></tr>
+            <tr><td>部署</td><td>Docker + Render / Pages</td><td>免费额度够演示，换机器一条命令复现</td><td>p5</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="pano__block">
+      <h3 class="pano__h3"><span>4</span>五阶段产出与验收</h3>
+      <div class="stack-wrap">
+        <table class="stack" id="panoTable"></table>
+      </div>
+    </div>
+
+    <p class="pano__foot">第一次读这些词会懵，正常：<a href="#/concepts">概念地图</a> 有 47 个词的白话解释，每个都标了「第几步真的用到」，步骤展开体里也能点回来。</p>
+  </section>
+
   <!-- ============ 实操档案 ============ -->
   <section class="panel" id="panel-log" role="region" aria-label="实操档案" hidden>
     <header class="panel__head">
@@ -144,6 +216,9 @@
       <h2 class="panel__h">执行规则</h2>
       <p class="panel__lede">四个模块各管一件事：路线告诉你下一步做什么，实操档案证明它真被做过，概念地图负责把词认全，这里讲怎么用。</p>
     </header>
+
+    <div class="sc" id="selfcheck"></div>
+
     <div class="prep">
       <div class="prep__item">
         <p class="k-label">开工前装</p>
@@ -155,16 +230,41 @@
       </div>
     </div>
     <div class="rules__grid" id="rulesGrid"></div>
+
+    <section class="trouble">
+      <h3 class="pano__h3"><span>?</span>卡住了：报错 → 原因 → 去哪一步</h3>
+      <div class="search search--trouble">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+        <input id="troubleSearch" type="search" placeholder="粘报错关键词：4551、EADDRINUSE、CORS、422…" aria-label="搜报错">
+      </div>
+      <p class="search__meta" id="troubleMeta" hidden></p>
+      <ul class="tr-list" id="troubleList"></ul>
+      <button type="button" class="linkbtn tr-more" id="troubleMore" hidden>展开全部</button>
+    </section>
+
     <footer class="foot">
       <p>路线基于 2026 年 10 月的岗位市场整理。框架版本变化快，工具选型建议每季度复核；步骤顺序与项目制推进的方法不需要动。</p>
       <p class="foot__meta">实操档案由 <code>node scripts/sync-progress.mjs</code> 从仓库生成，不手写</p>
     </footer>
   </section>
 
+  <!-- ============ 求职 ============ -->
+  <section class="panel" id="panel-career" role="region" aria-label="求职" hidden>
+    <header class="panel__head">
+      <p class="eyebrow">学完之后 · 让它变成机会</p>
+      <h2 class="panel__h">项目怎么讲、题怎么答、还差什么</h2>
+      <p class="panel__lede">路线给的是能力，这一页给的是转化：三个能说出口的数字、四段式项目叙述、十个必被追问的问题、每阶段的自测复述，以及外部题库与补课资料。</p>
+    </header>
+    <div id="careerBody"></div>
+    <p class="pano__foot">外部链接会过期，每季度点一遍；面试题以目标岗位的 JD 为准，别背通用答案。</p>
+  </section>
+
 </main>
 
 <script src="data/curriculum.js"></script>
 <script src="data/knowledge.js"></script>
+<script src="data/links.js"></script>
+<script src="data/career.js"></script>
 <script src="data/progress.js"></script>
 <script src="scripts/app.js"></script>
 </body>

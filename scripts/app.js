@@ -4,10 +4,12 @@
 
   var DATA = window.CURRICULUM;
   var KB = window.KNOWLEDGE;
+  var LINKS = window.LINKS || [];
+  var CAREER = window.CAREER || null;
   var LOG = window.PROGRESS || null;
   var KEY = "kb-agent-progress-v2";
   var COEF = 1.6;        // 步骤估时只算敲代码；读文档、踩坑、返工按这个系数补
-  var VIEWS = ["roadmap", "log", "concepts", "rules"];
+  var VIEWS = ["roadmap", "pano", "log", "concepts", "rules", "career"];
 
   var totalSteps = DATA.phases.reduce(function (n, p) { return n + p.steps.length; }, 0);
 
@@ -124,6 +126,21 @@
     });
   }
 
+  /* 概念 ↔ 步骤 双向索引：概念卡要有锚点 id，步骤也要知道涉及哪几个概念 */
+  var KB_TERM = {};
+  var STEP_TERMS = {};
+  if (KB) {
+    KB.layers.forEach(function (l) {
+      l.concepts.forEach(function (c, j) {
+        KB_TERM[c.term] = { id: "c-" + l.id + "-" + (j + 1), layer: l.id };
+        if (c.step) {
+          if (!STEP_TERMS[c.step]) STEP_TERMS[c.step] = [];
+          STEP_TERMS[c.step].push(c.term);
+        }
+      });
+    });
+  }
+
   function logBlockHTML(m) {
     var h = [];
     h.push('<div class="evi">');
@@ -145,6 +162,7 @@
 
   function stepHTML(step, idx, ref) {
     var h = [];
+    var terms = STEP_TERMS[step.id] || [];
 
     h.push('<li class="step" id="' + step.id + '" data-step="' + step.id + '">');
     h.push('<div class="step__row">');
@@ -205,12 +223,18 @@
     h.push('<p class="done"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8"/></svg>' +
       "<span><b>做完的标准</b><i>：</i>" + inline(step.done) + "</span></p>");
 
+    if (terms.length) {
+      h.push('<div class="step__kb"><span class="step__kb-k">涉及概念</span>' +
+        terms.map(function (t) {
+          return '<a class="chip" href="#/concepts" data-term="' + esc(t) + '">' + esc(t) + "</a>";
+        }).join("") + "</div>");
+    }
+
     if (DONE_LOG[step.id]) h.push(logBlockHTML(DONE_LOG[step.id]));
 
     h.push("</div></li>");
     return h.join("");
   }
-
   /* ---------------- 渲染：阶段轨 ---------------- */
 
   function counts() {
@@ -228,14 +252,69 @@
     mount.innerHTML = DATA.phases.map(function (p) {
       var n = c[p.id];
       var full = n === p.steps.length;
+      var pct = p.steps.length ? (n / p.steps.length) * 100 : 0;
       return '<li>' +
         '<a href="#/roadmap/' + p.id + '" data-phase-link="' + p.id + '"' +
-        ' class="' + (p.id === curPhase ? "is-on" : "") + (full ? " is-full" : "") + '">' +
+        ' class="' + (p.id === curPhase ? "is-on" : "") + (full ? " is-full" : "") + '"' +
+        (p.id === curPhase ? ' aria-current="true"' : "") + '>' +
         '<span class="rail__no">' + p.no + "</span>" +
-        '<span class="rail__text"><b>' + esc(p.title) + "</b><em data-navcount=\"" + p.id + '\">' + n + "/" + p.steps.length + " 步</em></span>" +
+        '<span class="rail__text">' +
+          "<b>" + esc(p.title) + "</b>" +
+          '<em><span class="rail__n">' + n + "/" + p.steps.length + "</span>" + (full ? " 已完" : " 步") + "</em>" +
+          '<span class="rail__bar"><i style="width:' + pct + '%"></i></span>' +
+        "</span>" +
         (full ? '<span class="rail__tick" aria-label="完成">✓</span>' : "") +
         "</a></li>";
     }).join("");
+  }
+
+  /* ---------------- 渲染：页头（标题 + 最新资料） ---------------- */
+
+  // 「下一步」与「继续学习」共用：第一个未完成的步骤
+  function nextStep() {
+    for (var i = 0; i < DATA.phases.length; i++) {
+      var p = DATA.phases[i];
+      for (var j = 0; j < p.steps.length; j++) {
+        if (!state.done[p.steps[j].id]) return { phase: p, step: p.steps[j] };
+      }
+    }
+    return null;
+  }
+
+  function renderHead() {
+    setText("headSteps", totalSteps);
+    setText("headConcepts", kbCount());
+
+    var nx = nextStep();
+    var link = document.getElementById("headNext");
+    if (link) {
+      if (nx) {
+        link.setAttribute("href", "#/roadmap/" + nx.phase.id + "/" + nx.step.id);
+        link.innerHTML = "<b>" + esc(IDX[nx.step.id].ref) + "</b>" +
+          esc(nx.step.title.replace(/^第\s*\d+\s*步[：:]\s*/, ""));
+      } else {
+        link.setAttribute("href", "#/rules");
+        link.textContent = "全部完成，去看执行规则";
+      }
+    }
+
+    var mount = document.getElementById("headRefs");
+    if (mount) {
+      // 页头只放 hot 的几条（多了会把页头撑高），其余在求职页资料库里
+      var hot = LINKS.filter(function (x) { return x.hot; });
+      if (!hot.length) hot = LINKS.slice(0, 6);
+      mount.innerHTML = hot.map(function (x) {
+        return '<li><a href="' + esc(x.url) + '" target="_blank" rel="noopener" title="' +
+          esc(x.note || "") + '"><span class="head__ref-p">' + esc(x.tag || "") +
+          '</span><span class="head__ref-t">' + esc(x.name) + "</span></a></li>";
+      }).join("");
+      setText("headRefsAll", "全部 " + LINKS.length + " 条资料");
+    }
+
+    if (LOG) {
+      setText("headRefsAt", String(LOG.generatedAt).slice(0, 10));
+      setText("headTested", LOG.stats.steps);
+    }
   }
 
   /* ---------------- 渲染：阶段 + 步骤 ---------------- */
@@ -318,11 +397,11 @@
     return KB ? KB.layers.reduce(function (n, l) { return n + l.concepts.length; }, 0) : 0;
   }
 
-  function kbItemHTML(c, idx) {
+  function kbItemHTML(c, idx, layerId) {
     var hit = c.step ? IDX[c.step] : null;
     var h = [];
 
-    h.push('<li class="kb__item">');
+    h.push('<li class="kb__item" id="c-' + layerId + "-" + (idx + 1) + '">');
     h.push('<p class="kb__term">' + inline(c.term) +
       (c.en ? '<span class="kb__en">' + esc(c.en) + "</span>" : "") +
       '<span class="kb__idx">' + pad(idx + 1) + "</span></p>");
@@ -354,7 +433,7 @@
     h.push('<div class="kb__body" id="body-' + l.id + '">');
     h.push('<p class="kb__note">' + inline(l.note) + "</p>");
     h.push('<ul class="kb__list">');
-    l.concepts.forEach(function (c, j) { h.push(kbItemHTML(c, j)); });
+    l.concepts.forEach(function (c, j) { h.push(kbItemHTML(c, j, l.id)); });
     h.push("</ul></div></div>");
     return h.join("");
   }
@@ -392,10 +471,6 @@
     if (!LOG) return;
     var s = LOG.stats;
 
-    setText("statSteps", s.steps);
-    setText("statCommits", s.commits);
-    setText("statEndpoints", s.endpoints);
-    setText("statTests", s.tests);
     setText("tabLog", s.steps + " 步实测");
 
     var meta = document.getElementById("logMeta");
@@ -475,6 +550,53 @@
     }).join("");
   }
 
+  /* ---------------- 渲染：全景 ---------------- */
+
+  function renderPano() {
+    var flow = document.getElementById("flowVersions");
+    if (flow) {
+      flow.innerHTML = DATA.phases.map(function (p, i) {
+        var out = String(p.output).replace(/^v\d+\s*·\s*/, "");
+        return '<div class="flow__node">' +
+          "<b>v" + i + "</b>" +
+          "<i>" + p.no + " · " + esc(p.title) + "</i>" +
+          "<em>" + esc(out) + "</em>" +
+          "<span class=\"flow__meta\">" + p.steps.length + " 步 / " + rawHours(p) + " 小时</span>" +
+          "</div>";
+      }).join("");
+    }
+
+    var table = document.getElementById("panoTable");
+    if (table) {
+      table.innerHTML = "<thead><tr><th>版本</th><th>阶段</th><th>产出（验收对象）</th><th>步数 / 工时</th></tr></thead><tbody>" +
+        DATA.phases.map(function (p, i) {
+          var out = String(p.output).replace(/^v\d+\s*·\s*/, "");
+          return "<tr><td><b>v" + i + "</b></td><td>" + p.no + " · " + esc(p.title) +
+            "</td><td>" + esc(out) + "</td><td>" + p.steps.length + " 步 / " + rawHours(p) + " 小时</td></tr>";
+        }).join("") + "</tbody>";
+    }
+  }
+
+  /* 从步骤里的概念 chip 跳到概念地图的那一条 */
+  function openConcept(term) {
+    var hit = KB_TERM[term];
+    go("concepts");
+    if (!hit) return;
+    setTimeout(function () {
+      var layer = document.querySelector('[data-layer="' + hit.layer + '"]');
+      if (layer && !layer.classList.contains("is-open")) {
+        layer.classList.add("is-open");
+        var head = layer.querySelector(".kb__head");
+        if (head) head.setAttribute("aria-expanded", "true");
+      }
+      var el = document.getElementById(hit.id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("is-flash");
+      setTimeout(function () { el.classList.remove("is-flash"); }, 1600);
+    }, 90);
+  }
+
   /* ---------------- 进度同步 ---------------- */
 
   function syncChecks() {
@@ -505,6 +627,7 @@
 
     renderRail();
     syncChecks();
+    renderHead();
   }
 
   /* ---------------- 日期 ---------------- */
@@ -512,6 +635,16 @@
   function todayISO() {
     var d = new Date();
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+
+  // 开始日期 + 计划周数 → 完成日
+  function etaDate() {
+    if (!state.start) state.start = todayISO();
+    var parts = state.start.split("-");
+    if (parts.length !== 3) return null;
+    var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    d.setDate(d.getDate() + totalWeeks() * 7);
+    return d;
   }
 
   function renderEta() {
@@ -522,12 +655,12 @@
 
     setText("etaWeeks", totalWeeks());
 
-    if (!eta) return;
-    var parts = state.start.split("-");
-    if (parts.length !== 3) { eta.textContent = "—"; return; }
-    var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-    d.setDate(d.getDate() + totalWeeks() * 7);
-    eta.textContent = d.getFullYear() + " 年 " + (d.getMonth() + 1) + " 月 " + d.getDate() + " 日";
+    var d = etaDate();
+    if (eta) {
+      eta.textContent = d
+        ? d.getFullYear() + " 年 " + (d.getMonth() + 1) + " 月 " + d.getDate() + " 日"
+        : "—";
+    }
   }
 
   /* ---------------- 路由 ---------------- */
@@ -585,9 +718,15 @@
     prevView = r.view;
 
     if (r.view === "roadmap") {
+      renderRail();          // 阶段切了就得重画轨，否则 is-on 停在旧的那一项
       renderPhase();
       if (r.step) focusStep(r.step);
-      else if (scrollTop) window.scrollTo(0, 0);
+      else if (scrollTop) {
+        // 切阶段后停在阶段头，而不是把整页拽回顶部（顶部是标题区，跟当前操作无关）
+        var head = document.getElementById("phaseHead");
+        if (head) head.scrollIntoView({ behavior: "smooth", block: "start" });
+        else window.scrollTo(0, 0);
+      }
     } else if (scrollTop) {
       window.scrollTo(0, 0);
     }
@@ -649,12 +788,28 @@
   function bindNav() {
     // 概念跳转 / 里程碑跳转统一走 hash，先切面板再展开那一步
     document.addEventListener("click", function (e) {
+      var chip = e.target.closest("[data-term]");
+      if (chip) {
+        e.preventDefault();
+        openConcept(chip.getAttribute("data-term"));
+        return;
+      }
+
       var jump = e.target.closest("[data-goto]");
-      if (!jump) return;
+      if (jump) {
+        e.preventDefault();
+        var id = jump.getAttribute("data-goto");
+        var ph = phaseOf(id);
+        if (ph) go("roadmap", ph.id, id);
+        return;
+      }
+
+      // 求职页小节：只滚屏，不碰路由
+      var sec = e.target.closest("[data-jump]");
+      if (!sec) return;
       e.preventDefault();
-      var id = jump.getAttribute("data-goto");
-      var ph = phaseOf(id);
-      if (ph) go("roadmap", ph.id, id);
+      var box = document.getElementById(sec.getAttribute("data-jump"));
+      if (box) box.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     window.addEventListener("hashchange", function () { applyRoute(true); });
@@ -777,31 +932,187 @@
   /* ---------------- 继续学习 ---------------- */
 
   function continueLearning() {
-    var target = null;
-    for (var i = 0; i < DATA.phases.length && !target; i++) {
-      var steps = DATA.phases[i].steps;
-      for (var j = 0; j < steps.length; j++) {
-        if (!state.done[steps[j].id]) { target = steps[j]; break; }
-      }
-    }
-    if (!target) { go("rules"); return; }
-    var ph = phaseOf(target.id);
+    var nx = nextStep();
+    if (!nx) { go("rules"); return; }
     query = "";
     var box = document.getElementById("search");
     if (box) box.value = "";
-    go("roadmap", ph.id, target.id);
+    go("roadmap", nx.phase.id, nx.step.id);
+  }
+
+  /* ---------------- 渲染：起步自测 ---------------- */
+
+  function renderSelfcheck() {
+    var el = document.getElementById("selfcheck");
+    if (!el || !CAREER) return;
+
+    var h = ['<h3 class="pano__h3"><span>✓</span>起步自测：你该从哪一步开始</h3>',
+      '<p class="cb__sub">' + esc(CAREER.selfcheck.intro) + "</p>",
+      '<ul class="sc__list">'];
+    CAREER.selfcheck.items.forEach(function (it) {
+      h.push('<li><label><input type="checkbox" data-sc="' + it.id + '"><span>' + esc(it.q) + "</span></label></li>");
+    });
+    h.push('</ul><div class="sc__out" id="scOut" aria-live="polite"></div>');
+    el.innerHTML = h.join("");
+
+    var out = document.getElementById("scOut");
+    function paint() {
+      var n = el.querySelectorAll("input[data-sc]:checked").length;
+      var hit = null;
+      CAREER.selfcheck.results.forEach(function (r) {
+        if (n >= r.min && n <= r.max) hit = r;
+      });
+      if (!hit || !out) return;
+      var html = '<p class="sc__t">' + esc(hit.title) + "</p><p>" + inline(hit.body) + "</p>";
+      if (hit.links && hit.links.length) {
+        html += '<p class="sc__links">' + hit.links.map(function (l) {
+          return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.name) + "</a>";
+        }).join("") + "</p>";
+      }
+      out.innerHTML = html;
+    }
+    el.addEventListener("change", paint);
+    // 先给空态：一进来就判「你要补两周基础」太武断，勾过再出结论
+    if (out) out.innerHTML = '<p class="sc__hint">勾了上面几项，这里给出起点结论。</p>';
+  }
+
+  /* ---------------- 渲染：卡住了 ---------------- */
+
+  // 16 条全铺开会把规则页拉得很长；默认只给最常见的一小截，搜索时不限
+  var TR_SHOW = 7;
+  var trOpen = false;
+
+  function renderTrouble(filter) {
+    var list = document.getElementById("troubleList");
+    if (!list || !CAREER) return;
+
+    var all = CAREER.trouble.length;
+    var q = String(filter || "").toLowerCase();
+    var rows = CAREER.trouble.filter(function (t) {
+      return !q || (t.err + " " + t.why + " " + t.fix).toLowerCase().indexOf(q) >= 0;
+    });
+
+    var meta = document.getElementById("troubleMeta");
+    if (meta) {
+      meta.hidden = !q;
+      meta.textContent = q ? "在 " + all + " 条里搜到 " + rows.length + " 条" : "";
+    }
+
+    var more = document.getElementById("troubleMore");
+    var fold = !q && !trOpen && rows.length > TR_SHOW;
+    if (fold) rows = rows.slice(0, TR_SHOW);
+    if (more) {
+      if (q || all <= TR_SHOW) {
+        more.hidden = true;
+      } else {
+        more.hidden = false;
+        more.textContent = trOpen ? "收起，只看最常见的 " + TR_SHOW + " 条" : "展开全部 " + all + " 条报错";
+      }
+    }
+
+    list.innerHTML = rows.length
+      ? rows.map(function (t) {
+        var ph = t.step ? phaseOf(t.step) : null;
+        var hit = t.step ? IDX[t.step] : null;
+        var link = ph && hit
+          ? '<a class="tr__go" href="#/roadmap/' + ph.id + "/" + t.step + '" data-goto="' + t.step + '">→ ' +
+            hit.ref + " · " + esc(hit.title) + "</a>"
+          : "";
+        return '<li class="tr"><p class="tr__err">' + inline(t.err) + "</p>" +
+          '<p class="tr__line"><b>为什么</b>' + inline(t.why) + "</p>" +
+          '<p class="tr__line"><b>怎么办</b>' + inline(t.fix) + "</p>" + link + "</li>";
+      }).join("")
+      : '<li class="empty">没有匹配的报错。把关键字换成状态码或英文单词再试：401、CORS、port。</li>';
+  }
+
+  /* ---------------- 渲染：求职 ---------------- */
+
+  function cbHead(t, sub) {
+    return '<h3 class="cb__h">' + t + "</h3>" + (sub ? '<p class="cb__sub">' + sub + "</p>" : "");
+  }
+
+  // 求职页很长，先给一行小节入口；点它只滚屏，不改 hash（改了会重走路由）
+  var CB_JUMP = [
+    ["cb-metrics", "① 三个数字"],
+    ["cb-story", "② 项目叙述"],
+    ["cb-resume", "③ 简历"],
+    ["cb-qa", "④ 十个追问"],
+    ["cb-recall", "⑤ 复述题"],
+    ["cb-lib", "⑥ 资料库"],
+  ];
+
+  function renderCareer() {
+    var mount = document.getElementById("careerBody");
+    if (!mount || !CAREER) return;
+    var h = [];
+
+    h.push('<nav class="cbjump" aria-label="本页小节">' +
+      CB_JUMP.map(function (x) {
+        return '<a href="#/career" data-jump="' + x[0] + '">' + x[1] + "</a>";
+      }).join("") + "</nav>");
+
+    h.push('<section class="cb" id="cb-metrics">' + cbHead("① 先补三个数字", "没有数字的项目，在面试里只能叫练习。三个都能量，都不需要装监控。") +
+      '<div class="mgrid">' +
+      CAREER.metrics.map(function (m) {
+        return '<div class="mgrid__i"><b>' + esc(m.k) + "</b><span>" + inline(m.v) + "</span><i>" + inline(m.why) + "</i></div>";
+      }).join("") + "</div></section>");
+
+    h.push('<section class="cb" id="cb-story">' + cbHead("② " + esc(CAREER.story.title), "") +
+      '<ol class="story">' +
+      CAREER.story.parts.map(function (p) {
+        return "<li><b>" + esc(p.k) + "</b><span>" + inline(p.v) + "</span></li>";
+      }).join("") + "</ol>" +
+      '<p class="cb__tip">' + inline(CAREER.story.tip) + "</p></section>");
+
+    h.push('<section class="cb" id="cb-resume">' + cbHead("③ " + esc(CAREER.resume.title), "") +
+      '<div class="resume">' +
+      CAREER.resume.lines.map(function (l, i) {
+        return '<p' + (i === 0 ? ' class="resume__t"' : "") + ">" + inline(l) + "</p>";
+      }).join("") + "</div>" +
+      '<p class="cb__tip">' + inline(CAREER.resume.tip) + "</p></section>");
+
+    h.push('<section class="cb" id="cb-qa">' + cbHead("④ 十个必被追问的", "每条只给骨架；最后那句是「答成这样就废了」。") +
+      '<ol class="qa">' +
+      CAREER.qa.map(function (x, i) {
+        return '<li><p class="qa__q"><span>' + pad(i + 1) + "</span>" + esc(x.q) + "</p>" +
+          '<ul class="qa__p">' + x.points.map(function (p) { return "<li>" + inline(p) + "</li>"; }).join("") + "</ul>" +
+          '<p class="qa__trap"><b>别答成</b>' + inline(x.trap) + "</p></li>";
+      }).join("") + "</ol></section>");
+
+    h.push('<section class="cb" id="cb-recall">' + cbHead("⑤ 合上代码，能不能说出来", "每阶段三问。答不出来的那一问，回去把对应步骤重做一遍。") +
+      '<div class="recall">' +
+      CAREER.recall.map(function (g) {
+        return '<div class="recall__g"><b>' + esc(g.phase) + "</b><ol>" +
+          g.items.map(function (q) { return "<li>" + esc(q) + "</li>"; }).join("") + "</ol></div>";
+      }).join("") + "</div></section>");
+
+    // 资料库：全站唯一来源 links.js，按 tag 分组
+    var tags = [];
+    LINKS.forEach(function (x) { if (tags.indexOf(x.tag) < 0) tags.push(x.tag); });
+    h.push('<section class="cb" id="cb-lib">' + cbHead("⑥ 资料库", "只维护 <code>data/links.js</code> 一份；带「顶部」的在首页页头。") +
+      '<div class="lib">' +
+      tags.map(function (t) {
+        return '<div class="lib__g"><p class="lib__t">' + esc(t) + "</p><ul>" +
+          LINKS.filter(function (x) { return x.tag === t; }).map(function (x) {
+            return '<li><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.name) +
+              (x.hot ? '<span class="lib__hot">顶部</span>' : "") + "</a><span>" + esc(x.note || "") + "</span></li>";
+          }).join("") + "</ul></div>";
+      }).join("") + "</div></section>");
+
+    mount.innerHTML = h.join("");
   }
 
   /* ---------------- 初始化 ---------------- */
 
   function init() {
-    setText("factSteps", totalSteps);
-    setText("factHours", DATA.phases.reduce(function (n, p) { return n + rawHours(p); }, 0));
-    setText("factConcepts", kbCount());
     setText("sideTotal", totalSteps);
     setText("tabCount", "0/" + totalSteps);
 
     renderRules();
+    renderPano();
+    renderCareer();
+    renderSelfcheck();
+    renderTrouble("");
     renderKnowledge("");
     renderLog();
     bindSteps();
@@ -850,6 +1161,35 @@
         save();
         sync();
         if (curView === "roadmap") renderPhase();
+      });
+    }
+
+    var trBox = document.getElementById("troubleSearch");
+    if (trBox) {
+      trBox.addEventListener("input", function () { renderTrouble(trBox.value.trim()); });
+    }
+
+    // 手机上页头资料默认收起（CSS 控制），这里只管展开／收起
+    var refToggle = document.getElementById("headRefsToggle");
+    if (refToggle) {
+      refToggle.addEventListener("click", function () {
+        var box = document.querySelector(".head__refs");
+        if (!box) return;
+        var open = box.classList.toggle("is-open");
+        refToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        refToggle.textContent = open ? "收起" : "展开";
+      });
+    }
+
+    var trMore = document.getElementById("troubleMore");
+    if (trMore) {
+      trMore.addEventListener("click", function () {
+        trOpen = !trOpen;
+        renderTrouble(trBox ? trBox.value.trim() : "");
+        if (!trOpen) {
+          var sec = document.querySelector(".trouble");
+          if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
       });
     }
 
