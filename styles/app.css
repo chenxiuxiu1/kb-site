@@ -37,7 +37,11 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
   --bar-h: 58px;
+  /* 路线内二级导航的高度：只有进到某条路线才占位，锚点滚动要避开它 */
+  --track-h: 0px;
 }
+
+body.is-track { --track-h: 44px; }
 
 * { box-sizing: border-box; }
 
@@ -210,6 +214,98 @@ code {
   transition: width 0.3s ease;
 }
 
+/* ---------------------------------------------------------------- 路线内二级导航 */
+
+/* 顶栏只管全局四块；进到某条路线后，这条细条说明「你在哪条路线、这条路线里还有哪几个视角」。
+   贴在顶栏下面：滚动时两行一起留在顶部，不出现「滚到一半不知道自己在哪」。 */
+.trackbar {
+  position: sticky;
+  top: var(--bar-h);
+  z-index: 30;
+  background: rgba(252, 253, 254, 0.95);
+  backdrop-filter: saturate(180%) blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.trackbar[hidden] { display: none; }
+
+.trackbar__in {
+  max-width: 1180px;
+  margin: 0 auto;
+  height: 44px;
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.trackbar__back {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.trackbar__back:hover { color: var(--accent); text-decoration: none; }
+
+.trackbar__name {
+  flex: 0 0 auto;
+  padding-right: 11px;
+  border-right: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.trackbar__note {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trackbar__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.trackbar__tabs::-webkit-scrollbar { display: none; }
+
+.trackbar__a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.trackbar__a:hover { background: var(--line-soft); color: var(--ink); text-decoration: none; }
+
+.trackbar__a em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+.trackbar__a.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.trackbar__a.is-on em { color: var(--accent); opacity: 0.75; }
+
+.trackbar__a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* ---------------------------------------------------------------- 面板 */
 
 .shell {
@@ -265,6 +361,405 @@ code {
   letter-spacing: 0.05em;
   color: var(--ink-4);
   text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- 板块墙（首页） */
+
+/* 续学条：自学最容易断在「打开页面不知道点哪」，所以第一屏就给一句「上次停在哪」+ 一个按钮。
+   放在筛选框上面，比折叠进某个面板里更可能被用上。 */
+.nextup {
+  margin-bottom: 18px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #f8fbff, #eef3fd);
+}
+.nextup[hidden] { display: none; }
+
+.nextup__in {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 13px 16px;
+}
+
+.nextup__main { flex: 1 1 260px; min-width: 0; }
+
+.nextup__label {
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.nextup__where {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.nextup__stats {
+  flex: 0 0 auto;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.nextup__go { flex: 0 0 auto; display: inline-block; }
+.nextup__go:hover { text-decoration: none; }
+
+/* 筛选区用现成的暖色令牌（原本只给「踩过的坑」用）：一块浅底把胶囊包起来，
+   和下面纯白的卡片拉开层次，不用再引一个新的色系。 */
+.filters {
+  padding: 14px 16px 15px;
+  margin-bottom: 26px;
+  border: 1px solid var(--warm-line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #fefaf4, var(--warm-soft));
+}
+
+.filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filters__row--tags {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--warm-line);
+}
+
+.pill {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: #fff;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 1px rgba(16, 24, 40, 0.03);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.pill:hover { border-color: var(--warm-line); color: var(--ink); }
+.pill.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 筛选后那行统计：和下面的分组标题拉开，否则读起来像同一行 */
+#boardMeta:not([hidden]) { margin: 12px 0 20px; }
+
+.board-group { margin-bottom: 26px; }
+.board-group .k-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.board-group__sum {
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-4);
+}
+
+/* 分组标题右边那根：从「一块」走到「一整条路线」的入口 */
+.board-group__all {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+.board-group__all:hover { color: var(--accent); }
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+/* 每条路线一个主色：四组卡片排下来，颜色就是路线的第二重标识，
+   不用回头去读分组标题。--c-soft 是同色系浅底，给编号块用。 */
+.board {
+  --c: var(--accent);
+  --c-soft: var(--accent-soft);
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 13px;
+  padding: 16px 16px 19px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.board--ai,
+.tp__item--ai { --c: #1f57d6; --c-soft: #eaf0fd; }
+.board--fs,
+.tp__item--fs { --c: #6d47c9; --c-soft: #f0ebfd; }
+.board--be,
+.tp__item--be { --c: #12805a; --c-soft: #e8f6f0; }
+.board--fe,
+.tp__item--fe { --c: #c2571a; --c-soft: #fdf0e7; }
+
+.board:hover {
+  border-color: var(--c);
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+.board:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+
+.board__no {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 11px;
+  background: var(--c-soft);
+  color: var(--c);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.board__main {
+  display: block;
+  min-width: 0;
+}
+
+.board__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.board__n {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-4);
+}
+
+/* 两行截断：卡片高度必须一致，否则四列网格会参差不齐 */
+.board__desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-3);
+}
+
+.board__bar {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.board__bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c);
+}
+
+/* 待写：整张卡压暗；仍可点（进详情页，不是干死在那儿），路线色保留 */
+.board--todo { background: #fcfcfd; }
+.board--todo .board__no { background: var(--c-soft); color: var(--c); opacity: 0.55; }
+.board--todo .board__title { color: var(--ink-2); }
+.board--todo .board__n { color: var(--ink-4); }
+.board--todo .board__bar { display: none; }
+
+@media (max-width: 1080px) {
+  .board-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* 待写板块的详情页（#/b/<id>） */
+.crumb {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+}
+.crumb a { color: var(--ink-3); }
+.crumb a:hover { color: var(--accent); }
+
+.bd {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+  margin: 22px 0 26px;
+}
+.bd__item {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+.bd__item p:last-child {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+.bd__steps {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.bd__steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  color: var(--ink-4);
+}
+.bd__steps li + li { border-top: 1px solid var(--line-soft); }
+.bd__steps li span {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+/* ---------------------------------------------------------------- 待写路线的骨架页 */
+
+/* 三条待写路线也要有页：「这一整条是什么、四块分别解决什么、怎么算做完」。
+   比首页卡片多一层，比正文少一层 —— 正好是现在的实际进度。 */
+.tp__badge {
+  margin: 18px 0 24px;
+  padding: 11px 14px;
+  border: 1px solid var(--warm-line);
+  border-radius: var(--radius-sm);
+  background: var(--warm-soft);
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--warm);
+}
+
+.tp__list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.tp__item {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.tp__no {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--c);
+}
+
+.tp__h {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.tp__desc {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+.tp__goal {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--c-soft);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+.tp__goal b {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--c);
+}
+
+.tp__meta {
+  margin: auto 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+.tp__link {
+  margin-left: auto;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 860px) {
+  .tp__list { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 860px) {
+  .board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bd { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .board-grid { grid-template-columns: minmax(0, 1fr); }
+  .filters { padding: 12px; }
+  .pill { font-size: 12.5px; padding: 7px 12px; }
 }
 
 /* ---------------------------------------------------------------- 路线：页头 */
@@ -566,7 +1061,7 @@ code {
   gap: 0;
   position: relative;
   padding-right: 76px;
-  scroll-margin-top: calc(var(--bar-h) + 18px);
+  scroll-margin-top: calc(var(--bar-h) + var(--track-h) + 18px);
 }
 
 .ph__nav {
@@ -715,7 +1210,7 @@ code {
 
 .step {
   border-bottom: 1px solid var(--line-soft);
-  scroll-margin-top: calc(var(--bar-h) + 14px);
+  scroll-margin-top: calc(var(--bar-h) + var(--track-h) + 14px);
 }
 
 .step__row {
@@ -829,6 +1324,13 @@ code {
   white-space: nowrap;
 }
 
+/* 写过笔记的步骤在标题上留个小标：不然只有展开才想得起自己写过 */
+.tag--note {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
 /* 展开体 */
 
 .step__body { display: none; padding: 2px 6px 26px 34px; }
@@ -844,6 +1346,29 @@ code {
   color: var(--ink-4);
 }
 .k:first-child { margin-top: 6px; }
+
+/* 我的笔记：展开体最后一块，与正文同一节奏，但不跟正文抢视觉 */
+.note__box {
+  display: block;
+  width: 100%;
+  min-height: 74px;
+  margin-top: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fdfdff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.7;
+  resize: vertical;
+}
+.note__box::placeholder { color: var(--ink-4); }
+.note__box:focus {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
 
 .do,
 .learn {
@@ -1739,7 +2264,7 @@ code {
   color: var(--accent);
   text-decoration: none;
 }
-.cb[id] { scroll-margin-top: calc(var(--bar-h) + 16px); }
+.cb[id] { scroll-margin-top: calc(var(--bar-h) + var(--track-h) + 16px); }
 
 /* ---------------------------------------------------------------- 求职 */
 
@@ -1945,6 +2470,10 @@ code {
   .shell { padding: 16px 14px 48px; }
   .panel { padding: 22px 20px 26px; border-radius: 12px; }
 
+  .trackbar__in { height: 40px; padding: 0 14px; gap: 9px; }
+  .trackbar__name { font-size: 12.5px; }
+  body.is-track { --track-h: 40px; }
+
   .head { grid-template-columns: 1fr; gap: 16px; }
   .head__refs a { margin-left: 0; }
 
@@ -1996,9 +2525,25 @@ code {
   .bar__in { padding: 0 12px; gap: 10px; }
   .brand__text { display: none; }
   .tab { font-size: 13.5px; padding: 6px 10px; }
-  .tab em { display: none; }   /* 手机上藏掉计数，5 个 tab 才装得下 */
+  .tab em { display: none; }   /* 手机上藏掉计数，4 个 tab 才装得下 */
   .pct { display: none; }
   .btn { padding: 7px 13px; font-size: 13px; }
+
+  /* 手机上二级导航只留「← 返回」与四个 chip：名字占一行，滚起来会先被挤掉 */
+  .trackbar__in { height: 38px; padding: 0 12px; gap: 8px; }
+  .trackbar__name { display: none; }
+  .trackbar__a { font-size: 13px; padding: 4px 9px; }
+  body.is-track { --track-h: 38px; }
+
+  /* 四个 chip 在窄屏装不下，右侧渐隐提示还能往右滑 */
+  .trackbar__tabs {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+  }
+
+  .nextup__in { gap: 12px; padding: 12px 14px; }
+  .nextup__stats { font-size: 11.5px; }
+  .nextup__go { flex: 1 1 100%; text-align: center; }
 
   .head__title { font-size: 25px; }
   .head__refs a { font-size: 13px; }

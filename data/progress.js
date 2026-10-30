@@ -1,9 +1,9 @@
 /* 自动生成，别手改。改数据请改 scripts/sync-progress.mjs 后重跑：
  *   node scripts/sync-progress.mjs
- * 生成时间：2026-10-28 17:18（本地时间）
+ * 生成时间：2026-10-30 14:59（本地时间）
  */
 window.PROGRESS = {
-  "generatedAt": "2026-10-28 17:18",
+  "generatedAt": "2026-10-30 14:59",
   "repo": {
     "name": "chenxiuxiu1/ai-learning",
     "url": "https://github.com/chenxiuxiu1/ai-learning",
@@ -12,16 +12,81 @@ window.PROGRESS = {
   },
   "stats": {
     "steps": 8,
-    "commits": 6,
-    "tests": 7,
-    "endpoints": 6,
-    "modules": 10
+    "commits": 23,
+    "tests": 48,
+    "endpoints": 19,
+    "modules": 18
   },
   "endpoints": [
     {
       "method": "GET",
       "path": "/health",
       "file": "kb-agent/app/main.py"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/me",
+      "file": "kb-agent/app/routers/auth.py"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "file": "kb-agent/app/routers/auth.py"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/logout",
+      "file": "kb-agent/app/routers/auth.py"
+    },
+    {
+      "method": "POST",
+      "path": "/chat",
+      "file": "kb-agent/app/routers/chat.py"
+    },
+    {
+      "method": "GET",
+      "path": "/chat/conversations",
+      "file": "kb-agent/app/routers/chat.py"
+    },
+    {
+      "method": "GET",
+      "path": "/chat/conversations/{conversation_id}",
+      "file": "kb-agent/app/routers/chat.py"
+    },
+    {
+      "method": "DELETE",
+      "path": "/chat/conversations/{conversation_id}",
+      "file": "kb-agent/app/routers/chat.py"
+    },
+    {
+      "method": "POST",
+      "path": "/library",
+      "file": "kb-agent/app/routers/docs.py"
+    },
+    {
+      "method": "GET",
+      "path": "/library",
+      "file": "kb-agent/app/routers/docs.py"
+    },
+    {
+      "method": "GET",
+      "path": "/library/search",
+      "file": "kb-agent/app/routers/docs.py"
+    },
+    {
+      "method": "GET",
+      "path": "/library/{doc_id}",
+      "file": "kb-agent/app/routers/docs.py"
+    },
+    {
+      "method": "DELETE",
+      "path": "/library/{doc_id}",
+      "file": "kb-agent/app/routers/docs.py"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics",
+      "file": "kb-agent/app/routers/metrics.py"
     },
     {
       "method": "POST",
@@ -160,6 +225,108 @@ window.PROGRESS = {
     }
   ],
   "commits": [
+    {
+      "hash": "1d8dbc1",
+      "date": "2026-10-30",
+      "subject": "docs(kb-agent): 补「数据在哪、口令在哪」一节，加静态导出脚本",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/1d8dbc1"
+    },
+    {
+      "hash": "8e5d68e",
+      "date": "2026-10-30",
+      "subject": "feat: 顶栏「板块」改为「学习地图」，三条专项路线补上第一块正文",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/8e5d68e"
+    },
+    {
+      "hash": "6c6e5fe",
+      "date": "2026-10-29",
+      "subject": "补站点图标，顺手把 .tmp-* 加进忽略",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/6c6e5fe"
+    },
+    {
+      "hash": "cf5c293",
+      "date": "2026-10-29",
+      "subject": "修：切 tab 会中断正在生成的回答（对话面板改为藏在后台而非卸载）",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/cf5c293"
+    },
+    {
+      "hash": "a97f834",
+      "date": "2026-10-29",
+      "subject": "p6: 口令登录（HttpOnly 签名 cookie）+ 上线说明；修老会话 citations/steps 为 NULL 时 500",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/a97f834"
+    },
+    {
+      "hash": "705c73f",
+      "date": "2026-10-29",
+      "subject": "p5: 指标接口与指标页（首字延迟 p95 / 成本 / 工具次数）+ 一键启动脚本",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/705c73f"
+    },
+    {
+      "hash": "0ce0ee9",
+      "date": "2026-10-29",
+      "subject": "p4: Agent 工具循环（查资料/查笔记/建笔记）+ 跨轮引用编号 + 界面步骤条",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/0ce0ee9"
+    },
+    {
+      "hash": "dc7af20",
+      "date": "2026-10-29",
+      "subject": "p3: 资料库 + BM25 检索 + 带出处的问答（含评测脚本与资料库界面）",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/dc7af20"
+    },
+    {
+      "hash": "8a3995d",
+      "date": "2026-10-29",
+      "subject": "p2: 接入 DeepSeek 流式对话（SSE）+ 会话消息落库 + 对话界面",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/8a3995d"
+    },
+    {
+      "hash": "5915303",
+      "date": "2026-10-29",
+      "subject": "gitignore：令牌不进被跟踪文件，改放 .gh-token（已在忽略清单）",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/5915303"
+    },
+    {
+      "hash": "b56d4e3",
+      "date": "2026-10-28",
+      "subject": "站点：页头补定位说明与「8 步已实测」标注；排错索引默认折叠可展开；求职页加小节跳转；手机上页头资料默认收起；发布清单补 links/career 并加引用自检",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/b56d4e3"
+    },
+    {
+      "hash": "b564ed2",
+      "date": "2026-10-28",
+      "subject": "站点：新增求职模块与起步自测/排错索引；外部资料收敛到 data/links.js，首页顶部只放 6 条热资料",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/b564ed2"
+    },
+    {
+      "hash": "878fcc6",
+      "date": "2026-10-28",
+      "subject": "站点：发布脚本支持令牌走 API + Pages 自检；全景适配 1180 宽度；gitignore 屏蔽 .gh-token",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/878fcc6"
+    },
+    {
+      "hash": "c969be0",
+      "date": "2026-10-28",
+      "subject": "站点：新增全景模块（版本流水线/请求链路/技术选型/验收表）、步骤-概念互跳；修阶段轨切换后不高亮；标题改为 AI 应用开发",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/c969be0"
+    },
+    {
+      "hash": "b75a091",
+      "date": "2026-10-28",
+      "subject": "站点重构：四模块切换卡 + 阶段轨 + 搜索/深链接/进度导入导出；新增 Pages 发布脚本",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/b75a091"
+    },
+    {
+      "hash": "d3f170e",
+      "date": "2026-10-28",
+      "subject": "deploy: 多阶段 Dockerfile + Render blueprint + Postgres 可选依赖（本机仍只用 SQLite）",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/d3f170e"
+    },
+    {
+      "hash": "4577705",
+      "date": "2026-10-28",
+      "subject": "站点改版：重排字号对比度与留白 + 新增实操档案（从仓库自动生成）+ p1 踩坑补进课程",
+      "url": "https://github.com/chenxiuxiu1/ai-learning/commit/4577705"
+    },
     {
       "hash": "b23e197",
       "date": "2026-10-28",

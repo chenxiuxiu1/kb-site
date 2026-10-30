@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI 应用开发 · 43 步做出一个能上线的项目</title>
-<meta name="description" content="AI 应用开发的项目制路线：用 DeepSeek 把一个知识库助手从空目录做到公网可访问，43 个可执行步骤，每步写清动哪个文件、跑什么命令、怎么算做完；已跑通的步骤附本机实测记录与踩过的坑，另有全景技术说明、47 个概念白话解释、16 条报错速查和面试准备。">
+<title>kb-agent · 四条路线，一块一块地做</title>
+<meta name="description" content="AI 应用、全栈、后端、前端四条路线的项目制学习板块：一块 4–9 步、2–4 周做完，结尾都有一个能当场演示的东西。AI 应用主线 43 步已写全（含本机实测记录与踩过的坑），另有全景技术说明、47 个概念白话解释、知识库检索和面试准备。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f57d6'/%3E%3Cpath d='M9 22V10h3l4 7 4-7h3v12h-2.6v-8L16.8 21h-1.6L11.6 14v8Z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles/app.css">
 </head>
@@ -14,41 +14,75 @@
 
 <header class="bar">
   <div class="bar__in">
-    <a class="brand" href="#/roadmap">
+    <a class="brand" href="#/boards">
       <span class="brand__mark">kb</span>
       <span class="brand__text">kb-agent</span>
     </a>
 
     <nav class="tabs" id="tabs" aria-label="模块">
-      <a class="tab" href="#/roadmap" data-view="roadmap">路线<em id="tabCount">0/43</em></a>
-      <a class="tab" href="#/pano" data-view="pano">全景</a>
-      <a class="tab" href="#/log" data-view="log">实操档案<em id="tabLog">–</em></a>
-      <a class="tab" href="#/concepts" data-view="concepts">概念地图<em id="tabKb">47</em></a>
+      <a class="tab" href="#/boards" data-view="boards">学习地图<em id="tabBoards">–</em></a>
       <a class="tab" href="#/library" data-view="library">知识库<em id="tabLib">–</em></a>
       <a class="tab" href="#/rules" data-view="rules">规则</a>
       <a class="tab" href="#/career" data-view="career">求职</a>
     </nav>
 
     <div class="bar__right">
-      <span class="pct" id="topPct">0%</span>
+      <span class="pct" id="topPct" title="全站已完成 / 已写好的步骤">0%</span>
       <button class="btn btn--primary" id="continueBtn" type="button">继续学习</button>
     </div>
   </div>
   <span class="bar__line" aria-hidden="true"><i id="topFill"></i></span>
 </header>
 
+<!-- 路线内的二级导航：只有进到某条路线才出现（路线 / 全景 / 实操档案 / 概念地图），
+     顶栏只管全局四块。分两层之后，顶栏不会再看起来像「AI 应用专用」。 -->
+<div class="trackbar" id="trackBar" hidden></div>
+
 <main class="shell" id="main">
+
+  <!-- ============ 板块（首页） ============ -->
+  <section class="panel" id="panel-boards" role="region" aria-label="学习地图">
+    <header class="panel__head">
+      <p class="eyebrow">四条路线 · 一块一块地做</p>
+      <h1 class="panel__h">今天做哪一块</h1>
+      <p class="panel__lede">每一块 4–9 步、2–4 周能做完，结尾都有一个能当场演示的东西。不必从头啃：挑你现在最想解决的那块，做完再回来选下一块。</p>
+    </header>
+
+    <div id="boardHome">
+      <!-- 续学条：一句话说清上次停在哪、这一周做了几步 → 打开就能接着做 -->
+      <div class="nextup" id="resumeCard" hidden></div>
+
+      <div class="filters" id="boardFilters">
+        <div class="filters__row" id="filterTracks" role="group" aria-label="按路线筛选"></div>
+        <div class="filters__row filters__row--tags" id="filterTags" role="group" aria-label="按主题筛选"></div>
+      </div>
+
+      <p class="search__meta" id="boardMeta" hidden></p>
+      <!-- 外层只是普通块：分组自己才是 grid。写反了会把四个路线并成一排、卡片压到 58px -->
+      <div class="board-wall" id="boardGrid"></div>
+
+      <p class="pano__foot" id="boardFoot"></p>
+    </div>
+
+    <!-- 待写板块的详情：骨架已经定了，正文还没落，点进去至少要知道这块要干什么 -->
+    <div id="boardDetail" hidden></div>
+  </section>
+
+  <!-- ============ 某条路线的骨架（正文还在写的那三条） ============ -->
+  <section class="panel" id="panel-track" role="region" aria-label="路线骨架" hidden>
+    <div id="trackBody"></div>
+  </section>
 
   <!-- ============ 路线 ============ -->
   <section class="panel" id="panel-roadmap" role="region" aria-label="路线">
     <header class="head">
       <div class="head__main">
-        <p class="eyebrow">项目制学习路线</p>
-        <h1 class="head__title">AI 应用开发</h1>
-        <p class="head__meta"><b id="headSteps">43</b> 步 · <b>5</b> 个版本 · <b id="headConcepts">47</b> 个概念</p>
-        <p class="head__lede">不按知识点排，按「能演示的版本」排：先把后端跑起来，再让模型说话、读你的资料、自己动手，最后上线。每一步都写清做什么、怎么验收、卡住去哪。</p>
-        <p class="head__note"><b id="headTested">8</b> 步已有实测记录（提交、测试、接口都可查），其余按同一套验收标准推演 —— 差异都在<a href="#/log">实操档案</a>里。</p>
-        <p class="head__next">下一步 <a id="headNext" href="#/roadmap/p1/p1-0"><b>01.01</b> 三天内让它说一句话</a></p>
+        <p class="eyebrow" id="headEyebrow">项目制学习路线</p>
+        <h1 class="head__title" id="headTitle">AI 应用开发</h1>
+        <p class="head__meta"><b id="headSteps">43</b> 步 · <b id="headPhases">5</b> <span id="headPhasesUnit">个版本</span><span id="headConceptsWrap"> · <b id="headConcepts">47</b> 个概念</span></p>
+        <p class="head__lede" id="headLede">不按知识点排，按「能演示的版本」排：先把后端跑起来，再让模型说话、读你的资料、自己动手，最后上线。每一步都写清做什么、怎么验收、卡住去哪。</p>
+        <p class="head__note" id="headNote"><b id="headTested">8</b> 步已有实测记录（提交、测试、接口都可查），其余按同一套验收标准推演 —— 差异都在<a href="#/ai/log">实操档案</a>里。</p>
+        <p class="head__next">下一步 <a id="headNext" href="#/ai/roadmap/p1/p1-0"><b>01.01</b> 三天内让它说一句话</a></p>
       </div>
       <div class="head__refs">
         <p class="k-label">最新资料<span class="head__refs-at">核对于 <span id="headRefsAt">2026-10-28</span></span><button type="button" class="head__refs-toggle" id="headRefsToggle" aria-expanded="false" aria-controls="headRefs">展开</button></p>
@@ -70,6 +104,7 @@
         <div class="rail__foot">
           <label for="pace">每周投入</label>
           <select id="pace">
+            <option value="6">6 小时</option>
             <option value="8">8 小时</option>
             <option value="12" selected>12 小时</option>
             <option value="16">16 小时</option>
@@ -176,7 +211,7 @@
       </div>
     </div>
 
-    <p class="pano__foot">第一次读这些词会懵，正常：<a href="#/concepts">概念地图</a> 有 47 个词的白话解释，每个都标了「第几步真的用到」，步骤展开体里也能点回来。</p>
+    <p class="pano__foot">第一次读这些词会懵，正常：<a href="#/ai/concepts">概念地图</a> 有 47 个词的白话解释，每个都标了「第几步真的用到」，步骤展开体里也能点回来。</p>
   </section>
 
   <!-- ============ 实操档案 ============ -->
@@ -294,11 +329,13 @@
 </main>
 
 <script src="data/curriculum.js"></script>
+<script src="data/tracks.js"></script>
 <script src="data/knowledge.js"></script>
 <script src="data/links.js"></script>
 <script src="data/career.js"></script>
 <script src="data/library.js"></script>
 <script src="data/progress.js"></script>
+<script src="data/boards.js"></script>
 <script src="scripts/app.js"></script>
 </body>
 </html>

@@ -3,16 +3,62 @@
   "use strict";
 
   var DATA = window.CURRICULUM;
+  var TRACKS = window.CURRICULUM_TRACKS || {};
   var KB = window.KNOWLEDGE;
   var LINKS = window.LINKS || [];
   var CAREER = window.CAREER || null;
   var LIB = window.LIBRARY || null;
   var LOG = window.PROGRESS || null;
-  var KEY = "kb-agent-progress-v2";
+  var KEY = "kb-agent-progress-v3";
+  var KEY_V2 = "kb-agent-progress-v2";
   var COEF = 1.6;        // 步骤估时只算敲代码；读文档、踩坑、返工按这个系数补
-  var VIEWS = ["roadmap", "pano", "log", "concepts", "library", "rules", "career"];
+  /* 两层导航：顶栏只管全局四块；路线 / 全景 / 实操档案 / 概念地图 是路线内部的，
+     只有进到某条路线才显示。这样顶栏不再看起来像「AI 应用专用」。 */
+  var GLOBAL_VIEWS = ["boards", "library", "rules", "career"];
+  var TRACK_VIEWS = ["roadmap", "pano", "log", "concepts"];
+  var VIEWS = ["boards", "track"].concat(TRACK_VIEWS, GLOBAL_VIEWS);
 
   var totalSteps = DATA.phases.reduce(function (n, p) { return n + p.steps.length; }, 0);
+
+  /* 四条路线共用一套渲染：AI 主线的数据在 curriculum.js，三条专项在 tracks.js。
+     两者结构完全同构，所以只要换掉「当前路线的数据」，阶段轨 / 步骤 / 勾选都能复用。
+     一条路线写完一块就往 tracks.js 里填一块，其余页面不用动。 */
+  function trackData(id) {
+    if (id === "ai") return DATA;
+    var t = TRACKS[id];
+    return t && t.phases && t.phases.length ? t : null;
+  }
+
+  // 这条路线一共有几块（包待写的）：页头与二级导航要说「几块里有几块已写」
+  function boardsOfTrack(id) {
+    if (id === "ai") return DATA.phases;
+    var t = (window.BOARD_TRACKS || []).filter(function (x) { return x.id === id; })[0];
+    return t ? t.boards : [];
+  }
+
+  function curData() { return trackData(curTrack) || DATA; }
+
+  function stepsOf(d) { return d.phases.reduce(function (n, p) { return n + p.steps.length; }, 0); }
+
+  // 所有路线的阶段摊平：id 全局唯一（p1…p5 / fs1 / be1 / fe1），查一步不用先知道它属于哪条路线
+  function allPhases() {
+    var out = DATA.phases.slice();
+    Object.keys(TRACKS).forEach(function (k) {
+      (TRACKS[k].phases || []).forEach(function (p) { out.push(p); });
+    });
+    return out;
+  }
+
+  function phaseTrack(phaseId) {
+    var i;
+    for (i = 0; i < DATA.phases.length; i++) if (DATA.phases[i].id === phaseId) return "ai";
+    var ids = Object.keys(TRACKS);
+    for (i = 0; i < ids.length; i++) {
+      var ps = TRACKS[ids[i]].phases || [];
+      for (var j = 0; j < ps.length; j++) if (ps[j].id === phaseId) return ids[i];
+    }
+    return null;
+  }
 
   /* ---------------- 小工具 ---------------- */
 
@@ -37,17 +83,23 @@
   }
 
   function byId(id) {
-    for (var i = 0; i < DATA.phases.length; i++) {
-      if (DATA.phases[i].id === id) return DATA.phases[i];
-    }
+    var ps = allPhases();
+    for (var i = 0; i < ps.length; i++) if (ps[i].id === id) return ps[i];
     return null;
   }
 
+  // 步骤链接统一带路线段（#/ai/roadmap/p2/p2-3、#/fs/roadmap/fs1/fs1-2）
+  function stepHref(phaseId, stepId) {
+    var t = phaseTrack(phaseId) || curTrack;
+    return "#/" + t + "/roadmap/" + phaseId + (stepId ? "/" + stepId : "");
+  }
+
   function phaseOf(stepId) {
-    for (var i = 0; i < DATA.phases.length; i++) {
-      var steps = DATA.phases[i].steps;
+    var ps = allPhases();
+    for (var i = 0; i < ps.length; i++) {
+      var steps = ps[i].steps;
       for (var j = 0; j < steps.length; j++) {
-        if (steps[j].id === stepId) return DATA.phases[i];
+        if (steps[j].id === stepId) return ps[i];
       }
     }
     return null;
@@ -62,24 +114,95 @@
 
   /* ---------------- 进度存取 ---------------- */
 
+  /* v3 存四样东西：
+     tracks  每条路线自己的勾选（现在只有 ai 有步骤，其余是空的，等正文写好直接能用）
+     notes   每步的本机笔记
+     days    每天勾了几步（本周进度与连续天数都从这算）
+     last    上次停在哪一步，首页续学条与「继续学习」都用它 */
+  function blankState() {
+    return {
+      v: 3,
+      tracks: {
+        ai: { done: {}, start: "", pace: 12 },
+        fs: { done: {}, start: "", pace: 6 },
+        be: { done: {}, start: "", pace: 6 },
+        fe: { done: {}, start: "", pace: 6 },
+      },
+      notes: {},
+      days: {},
+      last: null,
+    };
+  }
+
   function load() {
+    var s = blankState();
     try {
       var raw = localStorage.getItem(KEY);
-      if (!raw) return { done: {}, start: "", pace: 12 };
-      var o = JSON.parse(raw);
-      return { done: o.done || {}, start: o.start || "", pace: +o.pace || 12 };
-    } catch (e) {
-      return { done: {}, start: "", pace: 12 };
-    }
+      if (raw) {
+        var o = JSON.parse(raw) || {};
+        if (o.tracks) {
+          s.tracks = o.tracks;
+          s.notes = o.notes || {};
+          s.days = o.days || {};
+          s.last = o.last || null;
+        }
+      } else {
+        // 老用户：v2 是「一条路线平铺」的结构，整包搬进 tracks.ai，勾选一个不丢
+        var old = localStorage.getItem(KEY_V2);
+        if (old) {
+          var o2 = JSON.parse(old) || {};
+          s.tracks.ai = { done: o2.done || {}, start: o2.start || "", pace: +o2.pace || 12 };
+        }
+      }
+    } catch (e) {}
+    if (!s.tracks || !s.tracks.ai) s.tracks = blankState().tracks;
+    return s;
   }
 
   var state = load();
   var query = "";   // 步骤搜索词
 
+  // 勾选 / 节奏 / 开始日期按路线各存一份：三条专项的节奏与主线互不干扰
+  function trackState(id) {
+    if (!state.tracks[id]) state.tracks[id] = { done: {}, start: "", pace: 12 };
+    return state.tracks[id];
+  }
+
+  function aiState() { return trackState("ai"); }
+
+  function curState() { return trackState(curTrack); }
+
   function save() {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {}
+  }
+
+  /* 勾一步就在今天的格子里 +1；取消不扣 —— 那是那天的真实动作，不该被回滚 */
+  function markDay() {
+    var k = todayISO();
+    state.days[k] = (state.days[k] || 0) + 1;
+  }
+
+  function dayKey(offset) {
+    var d = new Date();
+    d.setDate(d.getDate() - offset);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+
+  // 最近 7 天（含今天）勾了几步
+  function weekSteps() {
+    var n = 0;
+    for (var i = 0; i < 7; i++) n += state.days[dayKey(i)] || 0;
+    return n;
+  }
+
+  // 连续学习天数：今天还没勾不算断（可能还没到晚上），从昨天往回数
+  function streakDays() {
+    var n = 0;
+    var i = state.days[dayKey(0)] ? 0 : 1;
+    while (i < 400 && state.days[dayKey(i)]) { n++; i++; }
+    return n;
   }
 
   /* ---------------- 时间模型 ---------------- */
@@ -90,12 +213,12 @@
 
   function planHours(p) { return rawHours(p) * COEF; }
 
-  function pace() { return state.pace || 12; }
+  function pace() { return curState().pace || 12; }
 
   // 阶段周次按累计工时切、首尾相接，改每周投入就整体重排
   function weekRanges() {
     var acc = 0, prevEnd = 0, out = {};
-    DATA.phases.forEach(function (p) {
+    curData().phases.forEach(function (p) {
       acc += planHours(p);
       var end = Math.max(prevEnd + 1, Math.ceil(acc / pace()));
       out[p.id] = { start: prevEnd + 1, end: end };
@@ -110,13 +233,14 @@
 
   function totalWeeks() {
     var r = weekRanges();
-    return r[DATA.phases[DATA.phases.length - 1].id].end;
+    var ps = curData().phases;
+    return r[ps[ps.length - 1].id].end;
   }
 
   /* ---------------- 实测记录 ---------------- */
 
-  var IDX = {};   // step id → { ref, title }
-  DATA.phases.forEach(function (p) {
+  var IDX = {};   // step id → { ref, title }，四条路线共用（id 全局唯一）
+  allPhases().forEach(function (p) {
     p.steps.forEach(function (s, i) { IDX[s.id] = { ref: p.no + "." + pad(i + 1), title: s.title }; });
   });
 
@@ -172,7 +296,8 @@
     h.push('<span class="step__no">' + (ref || pad(idx + 1)) + "</span>");
     h.push('<span class="step__main">');
     h.push('<span class="step__title">' + inline(step.title) +
-      (DONE_LOG[step.id] ? '<span class="tag">已实测</span>' : "") + "</span>");
+      (DONE_LOG[step.id] ? '<span class="tag">已实测</span>' : "") +
+      (state.notes[step.id] ? '<span class="tag tag--note">笔记</span>' : "") + "</span>");
     h.push('<span class="step__brief">' + inline(step.brief) + "</span>");
     h.push("</span></button>");
 
@@ -227,11 +352,19 @@
     if (terms.length) {
       h.push('<div class="step__kb"><span class="step__kb-k">涉及概念</span>' +
         terms.map(function (t) {
-          return '<a class="chip" href="#/concepts" data-term="' + esc(t) + '">' + esc(t) + "</a>";
+          return '<a class="chip" href="#/ai/concepts" data-term="' + esc(t) + '">' + esc(t) + "</a>";
         }).join("") + "</div>");
     }
 
     if (DONE_LOG[step.id]) h.push(logBlockHTML(DONE_LOG[step.id]));
+
+    /* 笔记：只存在这台浏览器里，不上传。换设备时跟着进度文件一起导出。 */
+    h.push('<div class="note">');
+    h.push('<label class="k" for="note-' + step.id + '">我的笔记</label>');
+    h.push('<textarea class="note__box" id="note-' + step.id + '" data-note="' + step.id + '" rows="3" ' +
+      'placeholder="卡在哪、命令改成了什么、下次从哪继续 —— 只存在这台浏览器">' +
+      esc(state.notes[step.id] || "") + "</textarea>");
+    h.push("</div>");
 
     h.push("</div></li>");
     return h.join("");
@@ -240,8 +373,9 @@
 
   function counts() {
     var out = {};
-    DATA.phases.forEach(function (p) {
-      out[p.id] = p.steps.filter(function (s) { return state.done[s.id]; }).length;
+    var done = curState().done;
+    curData().phases.forEach(function (p) {
+      out[p.id] = p.steps.filter(function (s) { return done[s.id]; }).length;
     });
     return out;
   }
@@ -250,12 +384,12 @@
     var c = counts();
     var mount = document.getElementById("rail");
     if (!mount) return;
-    mount.innerHTML = DATA.phases.map(function (p) {
+    mount.innerHTML = curData().phases.map(function (p) {
       var n = c[p.id];
       var full = n === p.steps.length;
       var pct = p.steps.length ? (n / p.steps.length) * 100 : 0;
       return '<li>' +
-        '<a href="#/roadmap/' + p.id + '" data-phase-link="' + p.id + '"' +
+        '<a href="' + stepHref(p.id) + '" data-phase-link="' + p.id + '"' +
         ' class="' + (p.id === curPhase ? "is-on" : "") + (full ? " is-full" : "") + '"' +
         (p.id === curPhase ? ' aria-current="true"' : "") + '>' +
         '<span class="rail__no">' + p.no + "</span>" +
@@ -271,31 +405,57 @@
 
   /* ---------------- 渲染：页头（标题 + 最新资料） ---------------- */
 
-  // 「下一步」与「继续学习」共用：第一个未完成的步骤
-  function nextStep() {
-    for (var i = 0; i < DATA.phases.length; i++) {
-      var p = DATA.phases[i];
+  // 「下一步」与「继续学习」共用：某条路线第一个未完成的步骤
+  function nextStepOf(track) {
+    var d = trackData(track);
+    if (!d) return null;
+    var done = trackState(track).done;
+    for (var i = 0; i < d.phases.length; i++) {
+      var p = d.phases[i];
       for (var j = 0; j < p.steps.length; j++) {
-        if (!state.done[p.steps[j].id]) return { phase: p, step: p.steps[j] };
+        if (!done[p.steps[j].id]) return { phase: p, step: p.steps[j] };
       }
     }
     return null;
   }
 
+  function nextStep() { return nextStepOf(curTrack); }
+
   function renderHead() {
-    setText("headSteps", totalSteps);
+    var d = curData();
+    var t = trackMeta(curTrack) || {};
+    var steps = stepsOf(d);
+
+    // 页头跟着路线换：停在 fs 上时不应该还写着「AI 应用开发」
+    setText("headEyebrow", t.sub || "项目制学习路线");
+    setText("headTitle", curTrack === "ai" ? "AI 应用开发" : (t.name || "") + "专项");
+    setText("headLede", t.intro || "");
+    setText("headSteps", steps);
+    setText("headPhases", curTrack === "ai" ? d.phases.length : boardsOfTrack(curTrack).length);
+    setText("headPhasesUnit", curTrack === "ai" ? "个版本" : "个板块");
     setText("headConcepts", kbCount());
+    var cw = document.getElementById("headConceptsWrap");
+    if (cw) cw.hidden = curTrack !== "ai";   // 专项没有概念地图，这个数字对它是假的
+
+    // 页头那句「几有实测」只属于主线：专项还没有实测记录，写成实话
+    var note = document.getElementById("headNote");
+    if (note) {
+      note.innerHTML = curTrack === "ai"
+        ? '<b id="headTested">' + (LOG ? LOG.stats.steps : "–") +
+          '</b> 步已有实测记录（提交、测试、接口都可查），其余按同一套验收标准推演 —— 差异都在<a href="#/ai/log">实操档案</a>里。'
+        : "每一步都有验收标准、代码和资料链接；还没有实测记录，按同一套标准写 —— 做完哪一步就把自己的命令与报错补进那条笔记。";
+    }
 
     var nx = nextStep();
     var link = document.getElementById("headNext");
     if (link) {
       if (nx) {
-        link.setAttribute("href", "#/roadmap/" + nx.phase.id + "/" + nx.step.id);
+        link.setAttribute("href", stepHref(nx.phase.id, nx.step.id));
         link.innerHTML = "<b>" + esc(IDX[nx.step.id].ref) + "</b>" +
           esc(nx.step.title.replace(/^第\s*\d+\s*步[：:]\s*/, ""));
       } else {
-        link.setAttribute("href", "#/rules");
-        link.textContent = "全部完成，去看执行规则";
+        link.setAttribute("href", "#/boards");
+        link.textContent = "这条路线走完了，回去挑下一块";
       }
     }
 
@@ -321,20 +481,21 @@
   /* ---------------- 渲染：阶段 + 步骤 ---------------- */
 
   function phaseHeadHTML(p) {
-    var i = DATA.phases.indexOf(p);
+    var ps = curData().phases;
+    var i = ps.indexOf(p);
     var r = weekRanges()[p.id];
     var c = counts()[p.id];
-    var prev = DATA.phases[i - 1];
-    var next = DATA.phases[i + 1];
+    var prev = ps[i - 1];
+    var next = ps[i + 1];
     var h = [];
 
     h.push('<div class="ph__nav">');
     h.push('<a class="ph__arrow' + (prev ? "" : " is-off") + '" ' +
-      (prev ? 'href="#/roadmap/' + prev.id + '" data-phase-link="' + prev.id + '" aria-label="上一阶段"'
+      (prev ? 'href="' + stepHref(prev.id) + '" data-phase-link="' + prev.id + '" aria-label="上一阶段"'
         : 'aria-disabled="true" aria-label="上一阶段"') + ">‹</a>");
-    h.push('<span class="ph__pos">' + p.no + " / " + pad(DATA.phases.length) + "</span>");
+    h.push('<span class="ph__pos">' + p.no + " / " + pad(ps.length) + "</span>");
     h.push('<a class="ph__arrow' + (next ? "" : " is-off") + '" ' +
-      (next ? 'href="#/roadmap/' + next.id + '" data-phase-link="' + next.id + '" aria-label="下一阶段"'
+      (next ? 'href="' + stepHref(next.id) + '" data-phase-link="' + next.id + '" aria-label="下一阶段"'
         : 'aria-disabled="true" aria-label="下一阶段"') + ">›</a>");
     h.push("</div>");
 
@@ -361,7 +522,7 @@
     if (query) {
       var q = query.toLowerCase();
       var hits = [];
-      DATA.phases.forEach(function (p) {
+      curData().phases.forEach(function (p) {
         p.steps.forEach(function (s) {
           var hay = [s.title, s.brief, s.done].concat(s.do || [], s.learn || []).join(" ").toLowerCase();
           if (hay.indexOf(q) >= 0) hits.push({ step: s, phase: p, ref: p.no + "." + pad(p.steps.indexOf(s) + 1) });
@@ -372,7 +533,7 @@
         : '<li class="empty">没找到「' + esc(query) + "」。换个词试试：CORS、pytest、uv、SSE、token。</li>";
       if (meta) {
         meta.hidden = false;
-        meta.textContent = "在 43 步里搜到 " + hits.length + " 条";
+        meta.textContent = "在 " + stepsOf(curData()) + " 步里搜到 " + hits.length + " 条";
       }
       syncChecks();
       return;
@@ -385,7 +546,10 @@
   }
 
   function renderPhase() {
-    var p = byId(curPhase) || DATA.phases[0];
+    var ps = curData().phases;
+    var p = null;
+    for (var i = 0; i < ps.length; i++) if (ps[i].id === curPhase) p = ps[i];
+    p = p || ps[0];
     curPhase = p.id;
     var head = document.getElementById("phaseHead");
     if (head) head.innerHTML = phaseHeadHTML(p);
@@ -411,7 +575,7 @@
     if (c.js) h.push('<p class="kb__line"><b>对标你熟的</b>' + inline(c.js) + "</p>");
     if (c.pit) h.push('<p class="kb__line kb__line--pit"><b>常见误解</b>' + inline(c.pit) + "</p>");
     if (hit) {
-      h.push('<a class="kb__step" href="#/roadmap/' + phaseOf(c.step).id + "/" + c.step + '" data-goto="' + c.step + '">' +
+      h.push('<a class="kb__step" href="' + stepHref(phaseOf(c.step).id, c.step) + '" data-goto="' + c.step + '">' +
         "→ " + hit.ref + " · " + esc(hit.title) + "</a>");
     }
 
@@ -463,7 +627,7 @@
     var how = document.getElementById("kbHow");
     if (how) how.innerHTML = KB.how.map(function (t) { return "<li>" + inline(t) + "</li>"; }).join("");
     setText("kbCount", kbCount());
-    setText("tabKb", kbCount());
+    setText("tbKb", kbCount());
   }
 
   /* ---------------- 渲染：实操档案 ---------------- */
@@ -472,7 +636,7 @@
     if (!LOG) return;
     var s = LOG.stats;
 
-    setText("tabLog", s.steps + " 步实测");
+    setText("tbLog", s.steps + " 步实测");
 
     var meta = document.getElementById("logMeta");
     if (meta) {
@@ -937,37 +1101,363 @@
     }
   }
 
+  /* ---------------- 板块墙（首页） ---------------- */
+
+  /* 一个板块 = 一条路线里的一个阶段。主线的 5 块直接从 DATA.phases 长出来，
+     另外三条的元信息在 data/boards.js —— 步骤正文还没写，先把卡片立出来。 */
+
+  var BOARD_FILTER = { track: "all", tag: "全部" };
+
+  function boardList() {
+    var out = [];
+
+    var main = window.BOARD_MAIN;
+    if (main && DATA) {
+      DATA.phases.forEach(function (p) {
+        var m = main.boards[p.id] || {};
+        out.push({
+          track: main.id,
+          trackName: main.name,
+          id: p.id,
+          no: p.no,
+          title: p.title,
+          desc: m.desc || p.goal || "",
+          tags: m.tags || [],
+          steps: p.steps.length,
+          hours: Math.round(rawHours(p)),
+          done: p.steps.filter(function (s) { return aiState().done[s.id]; }).length,
+          todo: false,
+          href: stepHref(p.id),
+        });
+      });
+    }
+
+    (window.BOARD_TRACKS || []).forEach(function (t) {
+      t.boards.forEach(function (b) {
+        // 这一块已经有正文：卡片改用真实步数与勾选，点进去就是路线页
+        var ph = phaseIn(t.id, b.id);
+        if (ph) {
+          var done = trackState(t.id).done;
+          out.push({
+            track: t.id,
+            trackName: t.name,
+            id: ph.id,
+            no: ph.no,
+            title: ph.title,
+            desc: b.desc || ph.goal || "",
+            tags: b.tags || [],
+            steps: ph.steps.length,
+            hours: Math.round(rawHours(ph)),
+            done: ph.steps.filter(function (s) { return done[s.id]; }).length,
+            goal: b.goal || ph.output || "",
+            todo: false,
+            href: stepHref(ph.id),
+          });
+          return;
+        }
+        out.push({
+          track: t.id,
+          trackName: t.name,
+          id: b.id,
+          no: b.no,
+          title: b.title,
+          desc: b.desc || "",
+          tags: b.tags || [],
+          steps: b.steps || 0,
+          hours: b.hours || 0,
+          goal: b.goal || "",
+          done: 0,
+          todo: true,
+          href: "#/b/" + b.id,
+        });
+      });
+    });
+
+    return out;
+  }
+
+  function boardMatches(b) {
+    if (BOARD_FILTER.track !== "all" && b.track !== BOARD_FILTER.track) return false;
+    if (BOARD_FILTER.tag !== "全部" && b.tags.indexOf(BOARD_FILTER.tag) < 0) return false;
+    return true;
+  }
+
+  function pillHTML(attr, value, label, on) {
+    return '<button type="button" class="pill' + (on ? " is-on" : "") + '" ' +
+      attr + '="' + esc(value) + '" aria-pressed="' + (on ? "true" : "false") + '">' +
+      esc(label) + "</button>";
+  }
+
+  function boardCardHTML(b) {
+    var pct = b.steps ? Math.round((b.done / b.steps) * 100) : 0;
+    var h = [];
+    h.push('<a class="board board--' + b.track + (b.todo ? " board--todo" : "") + '" data-board="' + b.track + "-" + b.id + '"');
+    h.push(' href="' + b.href + '">');
+    h.push('<span class="board__no">' + esc(b.no) + "</span>");
+    h.push('<span class="board__main">');
+    h.push('<span class="board__title">' + esc(b.title) +
+      "<em class=\"board__n\">" + (b.todo ? "待写" : b.steps + " 步") + "</em></span>");
+    h.push('<span class="board__desc">' + esc(b.desc) + "</span>");
+    h.push("</span>");
+    h.push('<span class="board__bar" aria-hidden="true"><i style="width:' + pct + '%"></i></span>');
+    h.push("</a>");
+    return h.join("");
+  }
+
+  /* 首页续学条：一句话回答「上次停在哪」，顺带把本周与连续天数给出来。
+     一个人自学最容易断在「打开页面不知道点哪」，所以它放在筛选框上面。
+     路线也跟着 last 走：上次停在全栈，就给全栈的下一步。 */
+  function renderResume() {
+    var box = document.getElementById("resumeCard");
+    if (!box) return;
+
+    var last = state.last;
+    var lt = last && trackData(last.track) ? last.track : "ai";
+    var lmeta = trackMeta(lt) || { name: "AI 应用" };
+    var lstate = trackState(lt);
+    var ltotal = stepsOf(trackData(lt) || DATA);
+    var done = Object.keys(lstate.done).length;
+
+    var step = last && last.track === lt && last.step ? findStep(last.step) : null;
+    var phase = step ? phaseOf(step.id) : null;
+    var nx = nextStepOf(lt);
+
+    var where, href, goLabel, label;
+    if (step && phase) {
+      label = "上次学到";
+      where = esc(lmeta.name) + " · " +
+        esc(IDX[step.id].ref) + " · " + esc(step.title.replace(/^第\s*\d+\s*步[：:]\s*/, "")) +
+        (lstate.done[step.id] ? "（已勾）" : "");
+      href = stepHref(phase.id, step.id);
+      goLabel = lstate.done[step.id] ? "再看一遍" : "接着做";
+    } else if (nx && done) {
+      // 停过但没点具体某步（比如只看了一眼路线）：不能说「还没开始」
+      label = "接下来";
+      where = esc(lmeta.name) + " · 下一步 · " + esc(IDX[nx.step.id].ref) + " · " +
+        esc(nx.step.title.replace(/^第\s*\d+\s*步[：:]\s*/, ""));
+      href = stepHref(nx.phase.id, nx.step.id);
+      goLabel = "接着做";
+    } else if (nx) {
+      label = "从这开始";
+      where = esc(lmeta.name) + " · 第一步 · " + esc(IDX[nx.step.id].ref) + " · " +
+        esc(nx.step.title.replace(/^第\s*\d+\s*步[：:]\s*/, ""));
+      href = stepHref(nx.phase.id, nx.step.id);
+      goLabel = "开始第一步";
+    } else {
+      label = "这条走完了";
+      where = esc(lmeta.name) + " 的 " + ltotal + " 步都勾完了 —— 回去挑下一块，或者去求职页把这些变成机会。";
+      href = "#/career";
+      goLabel = "去求职页";
+    }
+
+    var bits = [lmeta.name + " " + done + "/" + ltotal + " 步"];
+    var wk = weekSteps();
+    if (wk) bits.push("本周 " + wk + " 步");
+    var st = streakDays();
+    if (st > 1) bits.push("连续 " + st + " 天");
+
+    var h = ['<div class="nextup__in">'];
+    h.push('<div class="nextup__main"><p class="nextup__label">' + label + "</p>" +
+      '<p class="nextup__where">' + where + "</p></div>");
+    h.push('<p class="nextup__stats">' + bits.join(" · ") + "</p>");
+    h.push('<a class="btn btn--primary nextup__go" href="' + href + '">' + goLabel + "</a>");
+    h.push("</div>");
+
+    box.innerHTML = h.join("");
+    box.hidden = false;
+  }
+
+  function renderBoards() {
+    var grid = document.getElementById("boardGrid");
+    if (!grid) return;
+
+    var home = document.getElementById("boardHome");
+    var detail = document.getElementById("boardDetail");
+    if (home) home.hidden = false;
+    if (detail) detail.hidden = true;
+
+    renderResume();
+    var all = boardList();
+    // 顶栏用「几条路线」而不是「几块」：块会随着写作一直变，路线数是稳定的
+    setText("tabBoards", 1 + (window.BOARD_TRACKS || []).length + " 条路线");
+
+    var F = window.BOARD_FILTERS || { tracks: [{ id: "all", name: "全部" }], tags: ["全部"] };
+
+    var tr = document.getElementById("filterTracks");
+    if (tr) {
+      tr.innerHTML = F.tracks.map(function (t) {
+        return pillHTML("data-track", t.id, t.name, t.id === BOARD_FILTER.track);
+      }).join("");
+    }
+
+    var tg = document.getElementById("filterTags");
+    if (tg) {
+      tg.innerHTML = F.tags.map(function (t) {
+        return pillHTML("data-tag", t, t, t === BOARD_FILTER.tag);
+      }).join("");
+    }
+
+    var shown = all.filter(boardMatches);
+    var meta = document.getElementById("boardMeta");
+    if (meta) {
+      var narrowed = BOARD_FILTER.track !== "all" || BOARD_FILTER.tag !== "全部";
+      meta.hidden = !narrowed;
+      meta.textContent = narrowed
+        ? "筛出 " + shown.length + " 块 · 共 " + all.length + " 块 · 合计 " +
+          shown.reduce(function (n, b) { return n + b.steps; }, 0) + " 步"
+        : "";
+    }
+
+    if (!shown.length) {
+      grid.innerHTML = '<p class="empty">没有同时满足这两个条件的板块，换一个筛选试试。</p>';
+      return;
+    }
+
+    // 按路线分组：卡片墙一眼看不出归属，分组标题补上这个信息
+    var order = [];
+    var groups = {};
+    shown.forEach(function (b) {
+      if (!groups[b.track]) { groups[b.track] = []; order.push(b); }
+      groups[b.track].push(b);
+    });
+
+    // 分组统计里"整条路线"对有正文的路线直接进路线页
+    grid.innerHTML = order.map(function (first) {
+      var list = groups[first.track];
+      var steps = list.reduce(function (n, b) { return n + b.steps; }, 0);
+      var done = list.reduce(function (n, b) { return n + b.done; }, 0);
+      var writing = list.filter(function (b) { return b.todo; }).length;
+      var written = list.length - writing;
+      return '<section class="board-group">' +
+        '<p class="k-label">' + esc(first.trackName) +
+          '<span class="board-group__sum">' + list.length + " 块 · " +
+          (steps ? steps + " 步" : "待写") +
+          (done ? " · 已完成 " + done + " 步" : "") +
+          (writing ? " · " + written + " 块已写 / " + writing + " 块待写" : "") +
+          "</span>" +
+          '<a class="board-group__all" href="' +
+            (first.track === "ai" ? "#/ai/roadmap" : "#/" + first.track) +
+          '">整条路线 →</a></p>' +
+        '<div class="board-grid">' + list.map(boardCardHTML).join("") + "</div>" +
+        "</section>";
+    }).join("");
+
+    var foot = document.getElementById("boardFoot");
+    if (foot) {
+      foot.innerHTML = inline(
+        "标了**待写**的板块骨架已经定了（标题、要解决什么、验收标准），步骤正文还在写；" +
+        "四条路线现在各自有第一块可以先做。进度按路线分开记，只存在这台浏览器里，换设备请用导出 / 导入。"
+      );
+    }
+  }
+
+  function findBoard(id) {
+    var found = boardList().filter(function (b) { return b.id === id; });
+    return found.length ? found[0] : null;
+  }
+
+  /* 待写的板块没有步骤正文，但骨架（要解决什么、怎么算做完、几块几小时）已经定了，
+     那就给它一个真页面 —— 点进去什么都不发生比空白更槽。 */
+  function renderBoardDetail(id) {
+    var home = document.getElementById("boardHome");
+    var box = document.getElementById("boardDetail");
+    if (!home || !box) return false;
+
+    var b = findBoard(id);
+    if (!b || !b.todo) return false;
+
+    var h = [];
+    h.push('<p class="crumb"><a href="#/boards">← 全部板块</a></p>');
+    h.push('<p class="eyebrow">' + esc(b.trackName) + " · " + esc(b.no) + " · 写作中</p>");
+    h.push('<h2 class="panel__h">' + esc(b.title) + "</h2>");
+    h.push('<p class="panel__lede">' + esc(b.desc) + "</p>");
+    h.push('<div class="bd">');
+    h.push('<div class="bd__item"><p class="k-label">怎么算做完</p><p>' + esc(b.goal || "—") + "</p></div>");
+    h.push('<div class="bd__item"><p class="k-label">规模</p><p>' + b.steps + " 步 · 约 " + b.hours + " 小时</p></div>");
+    h.push("</div>");
+
+    h.push('<p class="k-label">步骤（正文待写）</p>');
+    h.push('<ol class="bd__steps">');
+    for (var i = 1; i <= (b.steps || 0); i++) {
+      h.push('<li><span>' + pad(i) + '</span>待写</li>');
+    }
+    h.push("</ol>");
+
+    h.push('<p class="pano__foot">这一块的骨架定了，正文还没落 —— 先拿 ' +
+      '<a href="#/boards">AI 应用那 5 块</a> 开工，写好的板块会把这里填上。</p>');
+
+    box.innerHTML = h.join("");
+    home.hidden = true;
+    box.hidden = false;
+    return true;
+  }
+
+  function bindBoards() {
+    var box = document.getElementById("boardFilters");
+    if (box) {
+      box.addEventListener("click", function (e) {
+        var btn = e.target.closest(".pill");
+        if (!btn) return;
+        var t = btn.getAttribute("data-track");
+        if (t) BOARD_FILTER.track = t;
+        var g = btn.getAttribute("data-tag");
+        if (g) BOARD_FILTER.tag = g;
+        renderBoards();
+      });
+    }
+
+    // 待写的板块现在有自己的详情页（#/b/<id>），不再需要“点了没反应”的提示
+  }
+
   /* ---------------- 进度同步 ---------------- */
 
   function syncChecks() {
+    var done = curState().done;
     var boxes = document.querySelectorAll("input[data-check]");
     Array.prototype.forEach.call(boxes, function (box) {
       var id = box.getAttribute("data-check");
-      var on = !!state.done[id];
+      if (!IDX[id]) return;
+      var on = !!done[id];
       box.checked = on;
       box.closest(".step").classList.toggle("is-done", on);
     });
   }
 
+  // 全站：只算已经有正文的路线（待写的路线没有步骤，不能拉低百分比）
+  function siteTotals() {
+    var total = stepsOf(DATA);
+    var done = Object.keys(aiState().done).length;
+    Object.keys(TRACKS).forEach(function (k) {
+      var d = trackData(k);
+      if (!d) return;
+      total += stepsOf(d);
+      done += Object.keys(trackState(k).done).length;
+    });
+    return { total: total, done: done };
+  }
+
   function sync() {
     var c = counts();
     var doneTotal = 0;
-    DATA.phases.forEach(function (p) { doneTotal += c[p.id]; });
+    curData().phases.forEach(function (p) { doneTotal += c[p.id]; });
+    var mine = stepsOf(curData());
 
-    var pct = totalSteps ? (doneTotal / totalSteps) * 100 : 0;
+    var site = siteTotals();
+    var pct = site.total ? (site.done / site.total) * 100 : 0;
     setText("sideDone", doneTotal);
-    setText("sideTotal", totalSteps);
-    setText("tabCount", doneTotal + "/" + totalSteps);
+    setText("sideTotal", mine);
+    setText("tbCount", doneTotal + "/" + mine);
     setText("topPct", Math.round(pct) + "%");
 
     var fill = document.getElementById("topFill");
     if (fill) fill.style.width = pct + "%";
     var side = document.getElementById("sideFill");
-    if (side) side.style.width = pct + "%";
+    if (side) side.style.width = mine ? (doneTotal / mine) * 100 + "%" : "0%";
 
     renderRail();
     syncChecks();
     renderHead();
+    renderResume();
   }
 
   /* ---------------- 日期 ---------------- */
@@ -977,10 +1467,11 @@
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
   }
 
-  // 开始日期 + 计划周数 → 完成日
+  // 开始日期 + 计划周数 → 完成日（按当前路线的节奏算）
   function etaDate() {
-    if (!state.start) state.start = todayISO();
-    var parts = state.start.split("-");
+    var st = curState();
+    if (!st.start) st.start = todayISO();
+    var parts = st.start.split("-");
     if (parts.length !== 3) return null;
     var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
     d.setDate(d.getDate() + totalWeeks() * 7);
@@ -990,8 +1481,13 @@
   function renderEta() {
     var input = document.getElementById("startDate");
     var eta = document.getElementById("etaDate");
-    if (!state.start) state.start = todayISO();
-    if (input) input.value = state.start;
+    var st = curState();
+    if (!st.start) st.start = todayISO();
+    if (input) input.value = st.start;
+
+    // 节奏也是每条路线一份，切路线时下拉框得跟着回到它自己的值
+    var sel = document.getElementById("pace");
+    if (sel) sel.value = String(pace());
 
     setText("etaWeeks", totalWeeks());
 
@@ -1003,34 +1499,196 @@
     }
   }
 
+  /* ---------------- 路线内二级导航 ---------------- */
+
+  function tbChip(view, label, extra, on) {
+    return '<a class="trackbar__a' + (on ? " is-on" : "") + '" href="#/' + curTrack + "/" + view + '"' +
+      (on ? ' aria-current="page"' : "") + ">" + label + extra + "</a>";
+  }
+
+  /* 二级导航只在路线里出现：顶栏放全局四块，这里放这条路线自己的四个视角。
+     三条待写路线只有「路线」本身，就换成一行说明，不摆四个点不动的 tab。 */
+  function renderTrackBar(r) {
+    var bar = document.getElementById("trackBar");
+    if (!bar) return;
+
+    var inTrack = TRACK_VIEWS.indexOf(r.view) >= 0 || r.view === "track";
+    bar.hidden = !inTrack;
+    // 告诉 CSS 「多了一行」：锚点滚动、sticky 偏移都靠这个变量避让
+    document.body.classList.toggle("is-track", inTrack);
+    if (!inTrack) return;
+
+    var t = trackMeta(r.track) || trackMeta("ai");
+    var h = ['<div class="trackbar__in">'];
+    h.push('<a class="trackbar__back" href="#/boards">← 全部板块</a>');
+    h.push('<span class="trackbar__name">' + esc(t.name) + "</span>");
+
+    if (!t.ready) {
+      h.push('<span class="trackbar__note">' + esc(t.sub) + " · 正文写作中</span>");
+    } else {
+      h.push('<nav class="trackbar__tabs" aria-label="' + esc(t.name) + ' 内">');
+      h.push(tbChip("roadmap", "路线", '<em id="tbCount">' + Object.keys(curState().done).length + "/" + stepsOf(curData()) + "</em>", r.view === "roadmap"));
+      // 全景 / 实操档案 / 概念地图只属于主线：专项路线还没这三维，摆上去就是空壳
+      if (r.track === "ai") {
+        h.push(tbChip("pano", "全景", "", r.view === "pano"));
+        h.push(tbChip("log", "实操档案", '<em id="tbLog">' + (LOG ? LOG.stats.steps + " 步实测" : "–") + "</em>", r.view === "log"));
+        h.push(tbChip("concepts", "概念地图", '<em id="tbKb">' + kbCount() + "</em>", r.view === "concepts"));
+      } else {
+        var written = curData().phases.length;
+        var total = boardsOfTrack(r.track).length;
+        h.push('<span class="trackbar__note">' + written + " / " + total + " 块已写 · " +
+          stepsOf(curData()) + " 步" + (written < total ? " · 其余待写" : "") + "</span>");
+      }
+      h.push("</nav>");
+    }
+    h.push("</div>");
+    bar.innerHTML = h.join("");
+  }
+
+  /* ---------------- 渲染：待写路线的骨架 ---------------- */
+
+  /* 首页卡片只能放下「一句话」，整条路线得有地方展开：四块排开、每块的验收标准与规模，
+     加上一句「正文还在写」，比一个禁用的入口诚实。 */
+  function renderTrackPage(id) {
+    var box = document.getElementById("trackBody");
+    var t = trackMeta(id);
+    if (!box || !t) return;
+
+    var boards = boardList().filter(function (b) { return b.track === id; });
+    var steps = boards.reduce(function (n, b) { return n + b.steps; }, 0);
+    var written = boards.filter(function (b) { return !b.todo; }).length;
+
+    var h = ['<div class="tp">'];
+    h.push('<p class="eyebrow">' + esc(t.sub) + "</p>");
+    h.push('<h2 class="panel__h">' + esc(t.name) + " · " + boards.length + " 块 / " + steps + " 步</h2>");
+    h.push('<p class="panel__lede">' + esc(t.intro) + "</p>");
+    h.push('<p class="tp__badge">' + (written
+      ? "已写完 " + written + " 块（点「进路线」直接开工），剩下 " + (boards.length - written) + " 块还在写。先把写好的那块走完，比等全部写完更划算。"
+      : "正文还在写。下面是四块的骨架 —— 每块要解决什么、怎么算做完、几步几小时都已经定了。") + "</p>");
+
+    h.push('<ol class="tp__list">');
+    boards.forEach(function (b, i) {
+      h.push('<li class="tp__item tp__item--' + esc(b.track) + '">');
+      h.push('<p class="tp__no">' + pad(i + 1) + " · " + esc(b.no) +
+        (b.todo ? " · 待写" : " · 已写") + "</p>");
+      h.push('<h3 class="tp__h">' + esc(b.title) + "</h3>");
+      h.push('<p class="tp__desc">' + esc(b.desc) + "</p>");
+      h.push('<p class="tp__goal"><b>怎么算做完</b>' + esc(b.goal || "—") + "</p>");
+      h.push('<p class="tp__meta">' + b.steps + " 步 · 约 " + b.hours + " 小时" +
+        (b.tags.length ? " · " + b.tags.join(" / ") : "") +
+        '<a class="tp__link" href="' + b.href + '">' + (b.todo ? "看这一块 →" : "进路线 →") + "</a></p>");
+      h.push("</li>");
+    });
+    h.push("</ol>");
+
+    h.push('<p class="pano__foot">三条专项路线的写法是：一块一块写，写完就上线。已经写好的块跟主线一样带验收标准、代码和资料链接；没写的块先看骨架。按你的目标挑顺序，不用等全部写完。</p>');
+    h.push("</div>");
+    box.innerHTML = h.join("");
+  }
+
   /* ---------------- 路由 ---------------- */
 
   var curPhase = DATA.phases[0].id;
   var curStep = null;
-  var curView = "roadmap";
+  var curTrack = "ai";
+  var curView = "boards";
   var prevView = null;
+  var prevTrack = null;
 
-  function firstUnfinishedPhase() {
-    for (var i = 0; i < DATA.phases.length; i++) {
-      var p = DATA.phases[i];
-      for (var j = 0; j < p.steps.length; j++) if (!state.done[p.steps[j].id]) return p.id;
+  function firstUnfinishedPhase(track) {
+    var d = trackData(track) || DATA;
+    var done = trackState(track || "ai").done;
+    for (var i = 0; i < d.phases.length; i++) {
+      var p = d.phases[i];
+      for (var j = 0; j < p.steps.length; j++) if (!done[p.steps[j].id]) return p.id;
     }
-    return DATA.phases[0].id;
+    return d.phases[0].id;
   }
 
+  function phaseIn(track, id) {
+    var d = trackData(track);
+    if (!d || !id) return null;
+    for (var i = 0; i < d.phases.length; i++) if (d.phases[i].id === id) return d.phases[i];
+    return null;
+  }
+
+  /* 路线元信息：ai 的标题在 BOARD_MAIN，其余三条在 BOARD_TRACKS。
+     ready = 已经有正文（哪怕只写了一块）；还没写的走骨架页。 */
+  function isTrack(id) {
+    if (id === "ai") return true;
+    return (window.BOARD_TRACKS || []).filter(function (t) { return t.id === id; }).length > 0;
+  }
+
+  function trackMeta(id) {
+    if (id === "ai") {
+      var m = window.BOARD_MAIN || {};
+      return { id: "ai", name: m.name || "AI 应用", sub: m.sub || "", intro: m.intro || "", ready: true };
+    }
+    var t = (window.BOARD_TRACKS || []).filter(function (x) { return x.id === id; })[0];
+    if (!t) return null;
+    return { id: t.id, name: t.name, sub: t.sub || "", intro: t.intro || "", ready: !!trackData(id) };
+  }
+
+  /* 地址栏规则：
+       #/boards  #/b/fs1  #/library  #/rules  #/career     全局
+       #/ai/roadmap/p2/p2-3  #/ai/pano  #/ai/log  #/ai/concepts  主线
+       #/fs/roadmap/fs1/fs1-2  #/fs                     专项（有正文走路线，没正文走骨架页）
+     旧地址（#/roadmap/p2/p2-3、#/pano…）没有路线段，仍落到 AI 应用那一条。 */
   function parseHash() {
     var raw = String(location.hash || "").replace(/^#\/?/, "");
     var parts = raw.split("/").filter(Boolean);
-    var v = VIEWS.indexOf(parts[0]) >= 0 ? parts[0] : "roadmap";
-    var p = byId(parts[1]) ? parts[1] : firstUnfinishedPhase();
-    var s = parts[2] || null;
-    return { view: v, phase: p, step: s };
+    var r = { track: "ai", view: "boards", phase: null, step: null, board: null };
+    var a = parts[0] || "";
+
+    if (a === "b" && parts[1]) {
+      r.view = "boards";
+      r.board = parts[1];
+    } else if (TRACK_VIEWS.indexOf(a) >= 0) {
+      r.view = a;
+      r.phase = parts[1] || null;
+      r.step = parts[2] || null;
+    } else if (GLOBAL_VIEWS.indexOf(a) >= 0) {
+      r.view = a;
+    } else if (a === "ai") {
+      if (TRACK_VIEWS.indexOf(parts[1]) >= 0) {
+        r.view = parts[1];
+        r.phase = parts[2] || null;
+        r.step = parts[3] || null;
+      } else {
+        r.view = "roadmap";
+      }
+    } else if (isTrack(a)) {
+      r.track = a;
+      if (TRACK_VIEWS.indexOf(parts[1]) >= 0) {
+        r.view = parts[1];
+        r.phase = parts[2] || null;
+        r.step = parts[3] || null;
+      } else {
+        // 一条都没写时是骨架页；写了一块就直推路线页
+        r.view = trackData(a) ? "roadmap" : "track";
+      }
+    }
+
+    // 专项路线里没有全景 / 实操档案 / 概念地图，别让手改的地址停在空面板上
+    if (r.track !== "ai" && (r.view === "pano" || r.view === "log" || r.view === "concepts")) {
+      r.view = trackData(r.track) ? "roadmap" : "track";
+      r.phase = null;
+      r.step = null;
+    }
+
+    if (r.view === "roadmap") {
+      r.phase = phaseIn(r.track, r.phase) ? r.phase : firstUnfinishedPhase(r.track);
+      r.step = r.step || null;
+      if (r.step && !findStep(r.step)) r.step = null;
+    }
+    return r;
   }
 
   function applyRoute(scrollTop) {
     var r = parseHash();
     curView = r.view;
-    curPhase = r.phase;
+    curTrack = r.track;
+    curPhase = r.phase || curPhase;
     curStep = r.step;
 
     VIEWS.forEach(function (v) {
@@ -1038,6 +1696,7 @@
       if (panel) panel.hidden = v !== r.view;
     });
 
+    // 顶栏只对全局四块高亮；进了某条路线，位置由二级导航条表示
     var tabs = document.querySelectorAll(".tab");
     Array.prototype.forEach.call(tabs, function (a) {
       var on = a.getAttribute("data-view") === r.view;
@@ -1045,6 +1704,8 @@
       if (on) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");
     });
+
+    renderTrackBar(r);
 
     // 只在真的换了模块时做一次短淡入，首屏与「展开某一步」不动画
     if (prevView && prevView !== r.view) {
@@ -1057,23 +1718,46 @@
     }
     prevView = r.view;
 
+    // 记下停在哪一步：首页续学条与「继续学习」都读它。
+    // 只点了「路线」没点具体某步时，保留同一阶段里上次那一步，别把它抹成 null
     if (r.view === "roadmap") {
-      renderRail();          // 阶段切了就得重画轨，否则 is-on 停在旧的那一项
+      var keep = !r.step && state.last && state.last.track === r.track && state.last.phase === r.phase
+        ? state.last.step : null;
+      state.last = { track: r.track, phase: r.phase, step: r.step || keep };
+      save();
+    }
+
+    if (r.view === "boards") {
+      // 详情页优先：只有待写板块有详情，主线板块直接进路线页
+      if (!r.board || !renderBoardDetail(r.board)) renderBoards();
+      if (scrollTop) window.scrollTo(0, 0);
+    } else if (r.view === "roadmap") {
+      var switched = prevTrack && prevTrack !== r.track;
       renderPhase();
+      renderEta();           // 专项路线有自己的节奏与周数
+      sync();                // 阶段轨 / 进度计数 / 页头 / 续学条一起刷（换路线时这些全变了）
+      prevTrack = r.track;
       if (r.step) focusStep(r.step);
+      else if (scrollTop && switched) window.scrollTo(0, 0);   // 换了路线先看页头
       else if (scrollTop) {
-        // 切阶段后停在阶段头，而不是把整页拽回顶部（顶部是标题区，跟当前操作无关）
+        // 同一路线内切阶段后停在阶段头，而不是把整页拽回顶部（顶部是标题区，跟当前操作无关）
         var head = document.getElementById("phaseHead");
         if (head) head.scrollIntoView({ behavior: "smooth", block: "start" });
         else window.scrollTo(0, 0);
       }
+    } else if (r.view === "track") {
+      renderTrackPage(r.track);
+      if (scrollTop) window.scrollTo(0, 0);
     } else if (scrollTop) {
       window.scrollTo(0, 0);
     }
   }
 
   function go(view, phase, step) {
-    var h = "#/" + view + (view === "roadmap" && phase ? "/" + phase : "") + (step ? "/" + step : "");
+    var h;
+    if (GLOBAL_VIEWS.indexOf(view) >= 0) h = "#/" + view;
+    else h = "#/" + curTrack + "/" + view +
+      (view === "roadmap" && phase ? "/" + phase : "") + (step ? "/" + step : "");
     if (location.hash === h) applyRoute(false);
     else location.hash = h;
   }
@@ -1117,11 +1801,41 @@
       var box = e.target.closest("input[data-check]");
       if (!box) return;
       var id = box.getAttribute("data-check");
-      if (box.checked) state.done[id] = true;
-      else delete state.done[id];
+      if (box.checked) {
+        curState().done[id] = true;
+        markDay();
+      } else delete curState().done[id];
       save();
       sync();
       if (query) renderSteps();
+    });
+
+    // 笔记：边打边存。43 步的文本量很小，没必要防抖 —— 丢了才可惜
+    mount.addEventListener("input", function (e) {
+      var ta = e.target.closest("textarea[data-note]");
+      if (!ta) return;
+      var id = ta.getAttribute("data-note");
+      var v = ta.value;
+      var had = !!state.notes[id];
+
+      if (v.trim()) state.notes[id] = v;
+      else delete state.notes[id];
+      save();
+
+      if (had === !!state.notes[id]) return;
+      // 标题上的「笔记」小标跟着变，不用整页重画
+      var li = ta.closest(".step");
+      var title = li ? li.querySelector(".step__title") : null;
+      if (!title) return;
+      var tag = title.querySelector(".tag--note");
+      if (state.notes[id] && !tag) {
+        var t = document.createElement("span");
+        t.className = "tag tag--note";
+        t.textContent = "笔记";
+        title.appendChild(t);
+      } else if (!state.notes[id] && tag) {
+        tag.parentNode.removeChild(tag);
+      }
     });
   }
 
@@ -1217,13 +1931,14 @@
       }
       if (curView !== "roadmap" || query) return;
 
-      var i = DATA.phases.indexOf(byId(curPhase));
+      var ps = curData().phases;
+      var i = ps.indexOf(byId(curPhase));
       if (e.key === "ArrowLeft" && i > 0) {
         e.preventDefault();
-        go("roadmap", DATA.phases[i - 1].id);
-      } else if (e.key === "ArrowRight" && i < DATA.phases.length - 1) {
+        go("roadmap", ps[i - 1].id);
+      } else if (e.key === "ArrowRight" && i > -1 && i < ps.length - 1) {
         e.preventDefault();
-        go("roadmap", DATA.phases[i + 1].id);
+        go("roadmap", ps[i + 1].id);
       }
     });
   }
@@ -1233,10 +1948,16 @@
   function exportProgress() {
     var payload = {
       site: "kb-agent-roadmap",
+      ver: 3,
       savedAt: new Date().toISOString(),
-      done: state.done,
-      start: state.start,
-      pace: state.pace,
+      tracks: state.tracks,
+      notes: state.notes,
+      days: state.days,
+      last: state.last,
+      // 这三个是 v2 的字段，多留着：文件拿到旧版页面上也还能导入
+      done: aiState().done,
+      start: aiState().start,
+      pace: aiState().pace,
     };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     var a = document.createElement("a");
@@ -1253,11 +1974,23 @@
     reader.onload = function () {
       try {
         var o = JSON.parse(String(reader.result));
-        if (!o || typeof o.done !== "object") throw new Error("格式不对");
-        if (!window.confirm("用文件里的进度覆盖当前进度？（已完成 " + Object.keys(o.done).length + " 步）")) return;
-        state.done = o.done || {};
-        state.start = o.start || state.start;
-        state.pace = +o.pace || state.pace;
+        if (!o) throw new Error("格式不对");
+        // 两代文件都收：v3 认 tracks，v2 认平铺的 done
+        var isV3 = !!(o.tracks && o.tracks.ai && typeof o.tracks.ai.done === "object");
+        var flat = typeof o.done === "object" ? o.done : null;
+        if (!isV3 && !flat) throw new Error("格式不对");
+        var n = Object.keys(isV3 ? o.tracks.ai.done : flat).length;
+        if (!window.confirm("用文件里的进度覆盖当前进度？（已完成 " + n + " 步，笔记一起换）")) return;
+        if (isV3) {
+          state.tracks = o.tracks;
+          state.notes = o.notes || {};
+          state.days = o.days || {};
+          state.last = o.last || null;
+        } else {
+          aiState().done = flat;
+          aiState().start = o.start || aiState().start;
+          aiState().pace = +o.pace || aiState().pace;
+        }
         save();
         sync();
         renderEta();
@@ -1272,11 +2005,28 @@
   /* ---------------- 继续学习 ---------------- */
 
   function continueLearning() {
-    var nx = nextStep();
-    if (!nx) { go("rules"); return; }
     query = "";
     var box = document.getElementById("search");
     if (box) box.value = "";
+
+    // 先回「上次停在哪一步」—— 跨路线也成立：停在 fs1-2 就回 fs1-2
+    var last = state.last;
+    if (last && trackData(last.track) && last.phase && last.step &&
+        !trackState(last.track).done[last.step] && findStep(last.step)) {
+      curTrack = last.track;
+      go("roadmap", last.phase, last.step);
+      return;
+    }
+
+    // 否则从上次那条路线的下一步开始；那条走完了就回 AI 主线（它是全部路线的前提）
+    var lt = last && trackData(last.track) ? last.track : "ai";
+    var nx = nextStepOf(lt);
+    if (!nx) {
+      lt = "ai";
+      nx = nextStepOf("ai");
+    }
+    if (!nx) { location.hash = "#/boards"; return; }
+    curTrack = lt;
     go("roadmap", nx.phase.id, nx.step.id);
   }
 
@@ -1355,7 +2105,7 @@
         var ph = t.step ? phaseOf(t.step) : null;
         var hit = t.step ? IDX[t.step] : null;
         var link = ph && hit
-          ? '<a class="tr__go" href="#/roadmap/' + ph.id + "/" + t.step + '" data-goto="' + t.step + '">→ ' +
+          ? '<a class="tr__go" href="' + stepHref(ph.id, t.step) + '" data-goto="' + t.step + '">→ ' +
             hit.ref + " · " + esc(hit.title) + "</a>"
           : "";
         return '<li class="tr"><p class="tr__err">' + inline(t.err) + "</p>" +
@@ -1445,9 +2195,6 @@
   /* ---------------- 初始化 ---------------- */
 
   function init() {
-    setText("sideTotal", totalSteps);
-    setText("tabCount", "0/" + totalSteps);
-
     renderRules();
     renderPano();
     renderCareer();
@@ -1455,19 +2202,22 @@
     renderTrouble("");
     renderKnowledge("");
     renderLog();
+    renderBoards();
     bindSteps();
     bindNav();
     bindSearch();
     bindKeys();
+    bindBoards();
     renderEta();
     sync();
     renderLibrary("");
     bindLibrary();
     applyRoute(false);
 
-    // 空进度 + 没指定具体步骤时，先把第 0 步展开，省掉「要点哪里」的犹豫
-    if (!Object.keys(state.done).length && !parseHash().step) {
-      var first = document.getElementById("p1-0");
+    // 第一次来：只在路线页把第一个未完成步骤展开，省掉「要点哪里」的犹豫。
+    // 不写死 p1-0 —— 老用户可能停在 p3，展开的应该是他自己那一段
+    if (curView === "roadmap" && !Object.keys(curState().done).length && !parseHash().step) {
+      var first = document.querySelector("#steps .step");
       if (first) openStep(first, true);
     }
 
@@ -1477,7 +2227,7 @@
     var start = document.getElementById("startDate");
     if (start) {
       start.addEventListener("change", function (e) {
-        state.start = e.target.value || todayISO();
+        curState().start = e.target.value || todayISO();
         save();
         renderEta();
         if (curView === "roadmap") renderPhase();
@@ -1488,7 +2238,7 @@
     if (paceSel) {
       paceSel.value = String(pace());
       paceSel.addEventListener("change", function (e) {
-        state.pace = +e.target.value || 12;
+        curState().pace = +e.target.value || 12;
         save();
         renderEta();
         if (curView === "roadmap") renderPhase();
@@ -1498,8 +2248,8 @@
     var reset = document.getElementById("resetBtn");
     if (reset) {
       reset.addEventListener("click", function () {
-        if (!window.confirm("清空所有已完成标记？这一步不能撤销。")) return;
-        state.done = {};
+        if (!window.confirm("清空这条路线所有已完成标记？（笔记会保留，这一步不能撤销）")) return;
+        curState().done = {};
         save();
         sync();
         if (curView === "roadmap") renderPhase();
